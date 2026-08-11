@@ -4,7 +4,7 @@
 // ============================================================
 
 // 1) Your Project URL (looks like https://abcdefgh.supabase.co)
-const SUPABASE_URL = "https://fxmvmsaoxkclratzqloo.supabase.co/rest/v1/";
+const SUPABASE_URL = "https://fxmvmsaoxkclratzqloo.supabase.co";
 
 // 2) Your anon / public key (a long string starting with "eyJ...")
 //    This key is SAFE to put in public code — it only allows what your
