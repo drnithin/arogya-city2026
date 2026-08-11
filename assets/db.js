@@ -1,14 +1,9 @@
-// ============================================================
-//  db.js — shared Supabase client + helpers
-//  Loaded by both the pledge form and the admin dashboard.
-// ============================================================
+// db.js — shared Supabase client + helpers
 const { SUPABASE_URL, SUPABASE_ANON_KEY, EVIDENCE_BUCKET } = window.AC_CONFIG;
 
-// supabase-js is loaded from CDN in the HTML before this file
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 const DB = {
-  // ---- pledge form side ----
   async getPledge(token) {
     const { data, error } = await sb.from('pledges').select('*').eq('token', token).single();
     if (error) throw error;
@@ -17,10 +12,9 @@ const DB = {
 
   async getSubmission(token) {
     const { data } = await sb.from('submissions').select('*').eq('token', token).maybeSingle();
-    return data; // may be null if not created yet
+    return data;
   },
 
-  // ensure a submission row exists and mark it opened
   async openSubmission(pledge) {
     let sub = await this.getSubmission(pledge.token);
     if (!sub) {
@@ -37,7 +31,6 @@ const DB = {
     return sub;
   },
 
-  // debounced-friendly save of the whole answers array
   async saveAnswers(token, answers, closing, status) {
     const patch = { answers, closing };
     if (status) patch.status = status;
@@ -46,7 +39,6 @@ const DB = {
     if (error) throw error;
   },
 
-  // ---- file upload ----
   async uploadEvidence(token, commitmentIndex, file) {
     const safe = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
     const path = `${token}/c${commitmentIndex}-${Date.now()}-${safe}`;
@@ -56,7 +48,6 @@ const DB = {
     return { url: data.publicUrl, name: file.name };
   },
 
-  // ---- admin side ----
   async allForDashboard() {
     const { data: pledges } = await sb.from('pledges').select('*').order('org');
     const { data: subs } = await sb.from('submissions').select('*');
