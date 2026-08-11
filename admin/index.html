@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Arogya City · Secretariat</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Inter:wght@400;450;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../assets/styles.css">
+</head>
+<body>
+
+<!-- password gate -->
+<div class="gate" id="gate">
+  <div class="card">
+    <img src="../assets/logo-main.png" alt="Arogya City">
+    <h2>Secretariat</h2>
+    <p>Enter the team password to view pledge progress.</p>
+    <div class="err" id="gate-err"></div>
+    <input type="password" id="gate-pw" placeholder="Team password" onkeydown="if(event.key==='Enter')tryLogin()">
+    <button class="btn btn-purple" style="width:100%" onclick="tryLogin()">Enter</button>
+  </div>
+</div>
+
+<!-- dashboard -->
+<div class="app hidden" id="dash" style="height:100dvh">
+  <div class="admin-top">
+    <h2><img src="../assets/logo-main.png" style="height:30px"> <span class="badge">SECRETARIAT</span></h2>
+    <div style="display:flex;gap:10px;align-items:center">
+      <a href="intake.html" class="linkbtn" style="text-decoration:none">+ Add from document</a>
+      <a href="../wall.html" class="linkbtn" style="text-decoration:none" target="_blank">Impact Wall ↗</a>
+      <button class="linkbtn" onclick="logout()">Lock</button>
+    </div>
+  </div>
+  <div class="admin-body">
+    <div class="stat-row" id="stats"></div>
+    <div class="adm-progress">
+      <div class="ah"><h3>Edition II closeout progress</h3><span id="adm-sub"></span></div>
+      <div class="adm-bar" id="admbar"></div>
+      <div class="adm-legend">
+        <span><i style="background:var(--green)"></i> Submitted</span>
+        <span><i style="background:var(--yellow)"></i> In progress</span>
+        <span><i style="background:var(--line)"></i> Not opened</span>
+      </div>
+    </div>
+    <div class="toolbar">
+      <h3>Organisations</h3>
+      <button class="addbtn" onclick="openAdd()">+ Add organisation</button>
+    </div>
+    <table>
+      <thead><tr><th>Organisation</th><th>Status</th><th>Pledge</th><th>Reported</th><th>Last activity</th><th>Actions</th></tr></thead>
+      <tbody id="rows"></tbody>
+    </table>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+<div id="modal-root"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="../assets/config.js"></script>
+<script src="../assets/db.js"></script>
+<script>
+const inr=n=>(n||0).toLocaleString('en-IN');
+function toast(m){const t=document.getElementById('toast');t.textContent=m;t.classList.add('show');clearTimeout(window._t);window._t=setTimeout(()=>t.classList.remove('show'),2600);}
+let DATA=[];
+
+// --- gate ---
+function tryLogin(){
+  const pw=document.getElementById('gate-pw').value;
+  if(pw===window.AC_CONFIG.ADMIN_PASSWORD){
+    sessionStorage.setItem('ac_admin','1');
+    showDash();
+  }else{ document.getElementById('gate-err').textContent='That password did not match. Try again.'; }
+}
+function logout(){ sessionStorage.removeItem('ac_admin'); location.reload(); }
+function showDash(){
+  document.getElementById('gate').classList.add('hidden');
+  document.getElementById('dash').classList.remove('hidden');
+  load();
+}
+if(sessionStorage.getItem('ac_admin')==='1') showDash();
+
+// --- load + render ---
+async function load(){
+  try{ DATA=await DB.allForDashboard(); render(); }
+  catch(e){ console.error(e); toast('Could not load data. Check config.js keys.'); }
+}
+function statusOf(d){ return d.sub ? d.sub.status : 'not_opened'; }
+function reportedCount(d){
+  if(!d.sub || !d.sub.answers) return 0;
+  return d.sub.answers.filter(a=>a && a.actual>0).length;
+}
+function lastActivity(d){
+  if(!d.sub) return 'Link not opened';
+  if(d.sub.status==='not_opened') return 'Link not opened';
+  const t=d.sub.submitted_at||d.sub.updated_at;
+  if(!t) return '—';
+  const diff=(Date.now()-new Date(t))/1000;
+  if(diff<3600) return Math.max(1,Math.round(diff/60))+' min ago';
+  if(diff<86400) return Math.round(diff/3600)+' hr ago';
+  return Math.round(diff/86400)+' days ago';
+}
+
+function render(){
+  const sub=DATA.filter(d=>statusOf(d)==='submitted').length;
+  const par=DATA.filter(d=>statusOf(d)==='partial').length;
+  const no=DATA.filter(d=>statusOf(d)==='not_opened').length;
+  const total=DATA.length||1;
+  const rate=Math.round(sub/total*100);
+  document.getElementById('stats').innerHTML=`
+    <div class="stat submitted"><div class="n">${sub}</div><div class="l">Reports submitted</div></div>
+    <div class="stat partial"><div class="n">${par}</div><div class="l">In progress</div></div>
+    <div class="stat notopened"><div class="n">${no}</div><div class="l">Not yet opened</div></div>
+    <div class="stat rate"><div class="n">${rate}%</div><div class="l">Completion rate</div></div>`;
+  document.getElementById('adm-sub').textContent=`${sub} of ${DATA.length} organisations closed out`;
+  document.getElementById('admbar').innerHTML=`<div class="seg-sub" style="width:${sub/total*100}%"></div><div class="seg-par" style="width:${par/total*100}%"></div>`;
+
+  document.getElementById('rows').innerHTML=DATA.map((d,idx)=>{
+    const s=statusOf(d);
+    const n=d.pledge.commitments.length;
+    const rc=reportedCount(d);
+    const pct=Math.round(rc/(n||1)*100);
+    const pill={submitted:'Submitted',partial:'In progress',not_opened:'Not opened'}[s];
+    const link=`${location.origin}${location.pathname.replace(/admin\/.*/,'')}index.html?t=${d.pledge.token}`;
+    const copyBtn=`<button class="linkbtn" onclick="copyLink('${link.replace(/'/g,"")}',this)">Copy link</button>`;
+    const viewBtn = s==='submitted' ? `<button class="viewbtn" onclick="openDetail(${idx})">View report</button>` : '';
+    return `<tr>
+      <td class="org-cell">${d.pledge.org}<small>${d.pledge.contact||''}</small></td>
+      <td><span class="pill ${s}">${pill}</span></td>
+      <td>${n} commitments</td>
+      <td><span class="mini-bar"><span class="mini-fill" style="width:${pct}%"></span></span>${rc}/${n}</td>
+      <td style="color:var(--ink-soft);font-size:13px">${lastActivity(d)}</td>
+      <td>${copyBtn}${viewBtn}</td></tr>`;
+  }).join('');
+}
+
+function copyLink(link,btn){
+  navigator.clipboard.writeText(link).then(()=>{
+    btn.classList.add('copied'); btn.textContent='Copied ✓';
+    setTimeout(()=>{btn.classList.remove('copied');btn.textContent='Copy link';},1600);
+  });
+}
+
+// --- detail view ---
+function openDetail(idx){
+  const d=DATA[idx];
+  const rows=d.pledge.commitments.map((c,i)=>{
+    const a=(d.sub.answers&&d.sub.answers[i])||{};
+    const file=a.file_url?`<a href="${a.file_url}" target="_blank">📎 ${a.file_name||'file'}</a>`:'';
+    const link=a.link_url?`<a href="${a.link_url}" target="_blank">🔗 ${a.link_url}</a>`:'';
+    return `<div class="detail-c">
+      <div class="dt">${c.title}</div>
+      <div class="dm">Goal ${inr(c.committed)} ${c.unit}</div>
+      <div class="dv">${inr(a.actual||0)} <span style="font-size:12px;color:var(--ink-soft);font-family:'IBM Plex Mono',monospace">reached</span></div>
+      ${a.story?`<p style="font-size:13.5px;margin-top:8px">${a.story}</p>`:''}
+      <div style="margin-top:8px;display:flex;flex-direction:column;gap:4px">${file}${link}</div>
+    </div>`;
+  }).join('');
+  const closing=d.sub.closing?`<label style="display:block;font-weight:600;font-size:13px;margin:14px 0 6px">Their closing note</label><p style="font-size:14px;color:var(--ink-soft)">${d.sub.closing}</p>`:'';
+  document.getElementById('modal-root').innerHTML=`
+    <div class="modal-bg" onclick="if(event.target===this)closeModal()">
+      <div class="modal">
+        <div class="modal-h"><h3>${d.pledge.org} · final report</h3><button class="x" onclick="closeModal()">×</button></div>
+        <div class="modal-b">${rows}${closing}</div>
+      </div>
+    </div>`;
+}
+
+// --- add organisation ---
+function openAdd(){
+  document.getElementById('modal-root').innerHTML=`
+    <div class="modal-bg" onclick="if(event.target===this)closeModal()">
+      <div class="modal">
+        <div class="modal-h"><h3>Add an organisation</h3><button class="x" onclick="closeModal()">×</button></div>
+        <div class="modal-b">
+          <label>Organisation name</label>
+          <input id="f-org" placeholder="e.g. Narayana Health">
+          <label>Primary contact</label>
+          <input id="f-contact" placeholder="e.g. Ms. Priya, CSR Lead">
+          <label>Pledge title</label>
+          <input id="f-title" placeholder="Short name of their pledge">
+          <label>Recap sentence <span class="small">(shown on their welcome screen, in your friendly voice)</span></label>
+          <textarea id="f-recap" rows="2" placeholder="You set out to…"></textarea>
+          <label>Commitments <span class="small">one per line, format: Title | goal number | unit | mode(online/offline)</span></label>
+          <textarea id="f-commit" rows="4" placeholder="Train restaurant owners | 100 | owners trained | offline
+Reach people online | 50000 | people engaged | online"></textarea>
+          <div style="margin-top:18px;display:flex;gap:10px;justify-content:flex-end">
+            <button class="linkbtn" onclick="closeModal()">Cancel</button>
+            <button class="addbtn" onclick="saveNewOrg()">Create + get link</button>
+          </div>
+        </div>
+      </div>
+    </div>`;
+}
+function slugify(s){ return s.toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'').slice(0,40); }
+async function saveNewOrg(){
+  const org=document.getElementById('f-org').value.trim();
+  if(!org){ toast('Please enter the organisation name.'); return; }
+  const contact=document.getElementById('f-contact').value.trim();
+  const title=document.getElementById('f-title').value.trim();
+  const recap=document.getElementById('f-recap').value.trim();
+  const lines=document.getElementById('f-commit').value.trim().split('\n').filter(Boolean);
+  const commitments=lines.map(l=>{
+    const [t,num,unit,mode]=l.split('|').map(x=>(x||'').trim());
+    return { title:t||'Commitment', committed:parseInt((num||'0').replace(/[^0-9]/g,''),10)||0, unit:unit||'', mode:(mode==='online'?'online':'offline'), said:t||'', prompt:'How did this go?' };
+  });
+  const token = slugify(org)+'-'+Math.random().toString(36).slice(2,7);
+  try{
+    await DB.addPledge({ token, org, contact, title, recap, commitments });
+    closeModal(); await load();
+    const link=`${location.origin}${location.pathname.replace(/admin\/.*/,'')}index.html?t=${token}`;
+    navigator.clipboard.writeText(link).catch(()=>{});
+    toast('Created. Their private link is copied to your clipboard.');
+  }catch(e){ console.error(e); toast('Could not create. Check your connection and keys.'); }
+}
+function closeModal(){ document.getElementById('modal-root').innerHTML=''; }
+</script>
+</body>
+</html>
