@@ -23,7 +23,7 @@ const EVIDENCE_BUCKET = "pledge-evidence";
 //    Leave blank to skip auto-draft (you'll fill pledges by hand in the
 //    review editor, still fast). To enable auto-draft, deploy the free
 //    Cloudflare Worker in claude-proxy-worker.js and paste its URL here.
-const CLAUDE_PROXY_URL = "";
+const CLAUDE_PROXY_URL = "https://arogya-claude.nithin-d9f.workers.dev/";
 
 // --- do not edit below ---
 window.AC_CONFIG = { SUPABASE_URL, SUPABASE_ANON_KEY, ADMIN_PASSWORD, EVIDENCE_BUCKET, CLAUDE_PROXY_URL };
