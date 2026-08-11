@@ -10,6 +10,17 @@ There is no build step and no server to run. You edit files, push to GitHub, and
 
 ---
 
+
+## Your URLs (after deploy)
+
+- **Home / control centre:** `.../arogya-city2026/` — password-gated; your team's front door with links to everything
+- **Dashboard:** `.../arogya-city2026/admin/`
+- **Intake tool:** `.../arogya-city2026/admin/intake.html`
+- **Impact Wall (public):** `.../arogya-city2026/wall.html`
+- **An organisation's pledge form:** `.../arogya-city2026/pledge.html?t=THEIR-TOKEN` (each org gets their own)
+
+The home page, dashboard, and intake tool all share the same team password. The pledge form and Impact Wall need no password (orgs use their private link; the wall is public).
+
 ## What you'll set up (about 30 minutes, one time)
 
 1. A Supabase project (the backend)
@@ -130,7 +141,8 @@ No setup needed beyond the main install; it reads the same database.
 
 ## Files in this project
 ```
-index.html              the pledge form (what orgs fill)
+index.html              the team home / control centre (password-gated)
+pledge.html             the pledge form an organisation fills (via their ?t= link)
 wall.html               the public Impact Wall
 admin/index.html        the Secretariat dashboard
 admin/intake.html       upload a pledge doc → draft → create link

@@ -103,7 +103,7 @@
 <div id="tool" class="hidden">
   <div class="intake-top">
     <h2><img src="../assets/logo-main.png" style="height:30px"> <span class="badge">INTAKE</span></h2>
-    <a href="index.html" class="linkbtn" style="text-decoration:none">← Dashboard</a>
+    <a href="../" class="linkbtn" style="text-decoration:none">← Home</a>
   </div>
 
   <div class="wrap">
@@ -370,7 +370,7 @@ async function createOrg(){
       recap:document.getElementById('e-recap').value.trim(),
       commitments
     });
-    const link=`${location.origin}${location.pathname.replace(/admin\/.*/,'')}index.html?t=${token}`;
+    const link=`${location.origin}${location.pathname.replace(/admin\/.*/,'')}pledge.html?t=${token}`;
     document.getElementById('editor').classList.remove('show');
     document.getElementById('res-org').textContent=org+' is ready';
     document.getElementById('res-link').value=link;

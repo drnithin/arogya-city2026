@@ -28,6 +28,7 @@
   <div class="admin-top">
     <h2><img src="../assets/logo-main.png" style="height:30px"> <span class="badge">SECRETARIAT</span></h2>
     <div style="display:flex;gap:10px;align-items:center">
+      <a href="../" class="linkbtn" style="text-decoration:none">⌂ Home</a>
       <a href="intake.html" class="linkbtn" style="text-decoration:none">+ Add from document</a>
       <a href="../wall.html" class="linkbtn" style="text-decoration:none" target="_blank">Impact Wall ↗</a>
       <button class="linkbtn" onclick="logout()">Lock</button>
@@ -123,7 +124,7 @@ function render(){
     const rc=reportedCount(d);
     const pct=Math.round(rc/(n||1)*100);
     const pill={submitted:'Submitted',partial:'In progress',not_opened:'Not opened'}[s];
-    const link=`${location.origin}${location.pathname.replace(/admin\/.*/,'')}index.html?t=${d.pledge.token}`;
+    const link=`${location.origin}${location.pathname.replace(/admin\/.*/,'')}pledge.html?t=${d.pledge.token}`;
     const copyBtn=`<button class="linkbtn" onclick="copyLink('${link.replace(/'/g,"")}',this)">Copy link</button>`;
     const viewBtn = s==='submitted' ? `<button class="viewbtn" onclick="openDetail(${idx})">View report</button>` : '';
     return `<tr>
@@ -210,7 +211,7 @@ async function saveNewOrg(){
   try{
     await DB.addPledge({ token, org, contact, title, recap, commitments });
     closeModal(); await load();
-    const link=`${location.origin}${location.pathname.replace(/admin\/.*/,'')}index.html?t=${token}`;
+    const link=`${location.origin}${location.pathname.replace(/admin\/.*/,'')}pledge.html?t=${token}`;
     navigator.clipboard.writeText(link).catch(()=>{});
     toast('Created. Their private link is copied to your clipboard.');
   }catch(e){ console.error(e); toast('Could not create. Check your connection and keys.'); }

@@ -1,8 +1,9 @@
 // db.js — shared Supabase client + helpers
-const sb = window.supabase.createClient(
+// (collision-proof: declares no top-level shared names)
+const sb = window.sb || (window.sb = window.supabase.createClient(
   window.AC_CONFIG.SUPABASE_URL,
   window.AC_CONFIG.SUPABASE_ANON_KEY
-);
+));
 
 const DB = {
   async getPledge(token) {
