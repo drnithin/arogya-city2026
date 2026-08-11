@@ -58,6 +58,10 @@ const DB = {
     if (error) throw error;
     await sb.from('submissions').insert({ pledge_id: data.id, token: data.token, status: 'not_opened' });
     return data;
+  },
+  async updatePledge(token, fields) {
+    const { error } = await sb.from('pledges').update(fields).eq('token', token);
+    if (error) throw error;
   }
 };
 window.DB = DB;
