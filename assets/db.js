@@ -3,7 +3,6 @@ const sb = window.supabase.createClient(
   window.AC_CONFIG.SUPABASE_URL,
   window.AC_CONFIG.SUPABASE_ANON_KEY
 );
-const EVIDENCE_BUCKET = window.AC_CONFIG.EVIDENCE_BUCKET;
 
 const DB = {
   async getPledge(token) {
@@ -40,9 +39,10 @@ const DB = {
   async uploadEvidence(token, commitmentIndex, file) {
     const safe = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
     const path = `${token}/c${commitmentIndex}-${Date.now()}-${safe}`;
-    const { error } = await sb.storage.from(EVIDENCE_BUCKET).upload(path, file, { upsert: true });
+    const bucket = window.AC_CONFIG.EVIDENCE_BUCKET;
+    const { error } = await sb.storage.from(bucket).upload(path, file, { upsert: true });
     if (error) throw error;
-    const { data } = sb.storage.from(EVIDENCE_BUCKET).getPublicUrl(path);
+    const { data } = sb.storage.from(bucket).getPublicUrl(path);
     return { url: data.publicUrl, name: file.name };
   },
   async allForDashboard() {
