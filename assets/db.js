@@ -1,7 +1,9 @@
 // db.js — shared Supabase client + helpers
-const { SUPABASE_URL, SUPABASE_ANON_KEY, EVIDENCE_BUCKET } = window.AC_CONFIG;
-
-const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+const sb = window.supabase.createClient(
+  window.AC_CONFIG.SUPABASE_URL,
+  window.AC_CONFIG.SUPABASE_ANON_KEY
+);
+const EVIDENCE_BUCKET = window.AC_CONFIG.EVIDENCE_BUCKET;
 
 const DB = {
   async getPledge(token) {
@@ -9,12 +11,10 @@ const DB = {
     if (error) throw error;
     return data;
   },
-
   async getSubmission(token) {
     const { data } = await sb.from('submissions').select('*').eq('token', token).maybeSingle();
     return data;
   },
-
   async openSubmission(pledge) {
     let sub = await this.getSubmission(pledge.token);
     if (!sub) {
@@ -30,7 +30,6 @@ const DB = {
     }
     return sub;
   },
-
   async saveAnswers(token, answers, closing, status) {
     const patch = { answers, closing };
     if (status) patch.status = status;
@@ -38,7 +37,6 @@ const DB = {
     const { error } = await sb.from('submissions').update(patch).eq('token', token);
     if (error) throw error;
   },
-
   async uploadEvidence(token, commitmentIndex, file) {
     const safe = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
     const path = `${token}/c${commitmentIndex}-${Date.now()}-${safe}`;
@@ -47,7 +45,6 @@ const DB = {
     const { data } = sb.storage.from(EVIDENCE_BUCKET).getPublicUrl(path);
     return { url: data.publicUrl, name: file.name };
   },
-
   async allForDashboard() {
     const { data: pledges } = await sb.from('pledges').select('*').order('org');
     const { data: subs } = await sb.from('submissions').select('*');
@@ -55,7 +52,6 @@ const DB = {
     (subs || []).forEach(s => { byToken[s.token] = s; });
     return (pledges || []).map(p => ({ pledge: p, sub: byToken[p.token] || null }));
   },
-
   async addPledge(row) {
     const { data, error } = await sb.from('pledges').insert(row).select().single();
     if (error) throw error;
@@ -63,5 +59,4 @@ const DB = {
     return data;
   }
 };
-
 window.DB = DB;
