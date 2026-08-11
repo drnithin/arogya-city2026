@@ -19,7 +19,7 @@
 
 <div class="screen-msg hidden" id="badlink">
   <h2>We couldn't find that pledge</h2>
-  <p>This link may be incomplete or out of date. Please use the personal link the Arogya City Secretariat sent you, or write back to them and we'll re-send it.</p>
+  <p>This link may be incomplete or out of date. Please use the personal link the Arogya City technical team sent you, or write back to them and we'll re-send it.</p>
 </div>
 
 <!-- main app (hidden until pledge loads) -->
@@ -44,7 +44,7 @@
 const inr = n => (n||0).toLocaleString('en-IN');
 function toast(m){const t=document.getElementById('toast');t.textContent=m;t.classList.add('show');clearTimeout(window._t);window._t=setTimeout(()=>t.classList.remove('show'),2600);}
 
-let PLEDGE=null, SUB=null, st=[], step=0, N=0, TOTAL_STEPS=0;
+let PLEDGE=null, SUB=null, st=[], step=0, N=0, TOTAL_STEPS=0, EXTRA={};
 
 function tokenFromURL(){
   const p=new URLSearchParams(location.search);
@@ -60,18 +60,20 @@ async function boot(){
   }catch(e){ console.error(e); return fail(); }
 
   N = PLEDGE.commitments.length;
-  TOTAL_STEPS = N + 3;
+  TOTAL_STEPS = N + 4; // welcome + N commitments + story&impact + review + done
   // hydrate saved answers
   st = PLEDGE.commitments.map((c,i)=>{
     const a = (SUB.answers && SUB.answers[i]) || {};
     return { actual:a.actual||0, story:a.story||'', file_url:a.file_url||null, file_name:a.file_name||null, link_url:a.link_url||'' };
   });
+  // extra story fields live in SUB.extra (jsonb via closing? we store in a dedicated object)
+  EXTRA = (SUB.extra) || { partnerships:'', innovations:'', more_than_pledged:'', consent:false };
 
   document.getElementById('loading').classList.add('hidden');
   document.getElementById('app').classList.remove('hidden');
   buildSteps();
   // resume where they left off if already submitted
-  if(SUB.status==='submitted'){ go(N+2); } else { go(0); }
+  if(SUB.status==='submitted'){ go(N+3); } else { go(0); }
   restoreInputs();
 }
 function fail(){ document.getElementById('loading').classList.add('hidden'); document.getElementById('badlink').classList.remove('hidden'); }
@@ -98,7 +100,7 @@ function buildSteps(){
       <div class="duo">
         <div class="box target"><div class="k">Your goal</div><div class="num">${inr(c.committed)}</div><div class="u">${c.unit}</div></div>
         <div class="join">→</div>
-        <div class="box"><div class="k">What you reached</div><input class="achieved-in" id="ain-${i}" inputmode="numeric" placeholder="0" oninput="onAch(${i})"><div class="u">${c.unit}</div></div>
+        <div class="box"><div class="k">What you reached <span style="color:var(--rose,#c0435f)">*</span></div><input class="achieved-in" id="ain-${i}" inputmode="numeric" placeholder="0" oninput="onAch(${i})"><div class="u">${c.unit}</div></div>
       </div>
       <div class="meter"><div class="meter-fill" id="mf-${i}"></div></div>
       <div class="meter-note" id="mn-${i}"></div>
@@ -117,31 +119,81 @@ function buildSteps(){
         <div class="hint" style="margin-bottom:8px">A YouTube, Google Drive or Instagram link works. Better than uploading large videos.</div>
         <input type="url" id="link-${i}" placeholder="https://…" oninput="onLink(${i})">
       </div>
-      <div class="step-nav"><button class="btn btn-ghost" onclick="go(${i})">← Back</button><button class="btn btn-primary" onclick="go(${i+2})">${i+1<N?'Next commitment':'Review'} &nbsp;→</button></div>
+      <div class="step-nav"><button class="btn btn-ghost" onclick="go(${i})">← Back</button><button class="btn btn-primary" onclick="nextFromCommit(${i})">${i+1<N?'Next commitment':'Continue'} &nbsp;→</button></div>
     </div></div>`;
   });
 
+  // STORY & IMPACT step (optional)
   html+=`
   <div class="step" data-i="${N+1}"><div class="step-inner">
-    <div class="eyebrow o">Almost done</div>
-    <h1 class="big">Here's everything, ${PLEDGE.org}.</h1>
-    <p class="lede">A quick look before it reaches the Arogya City Secretariat. Tap any line to change it.</p>
-    <div class="rev-list" id="revlist"></div>
-    <div class="field" style="margin-top:26px">
-      <label>Anything you'd like us to know?</label>
-      <div class="prompt">What worked, what was hard, or whether you'd like to renew this pledge for Edition III. This is what we love to showcase on the public Impact Wall.</div>
-      <textarea id="closing" placeholder="Optional, but we'd genuinely love to hear it." oninput="onClosing()"></textarea>
+    <div class="eyebrow p">Your story & impact</div>
+    <h1 class="big">The story behind the numbers.</h1>
+    <p class="lede">All optional, but this is what we love to celebrate publicly. Even one sentence or one photo helps us showcase your work on the Arogya City Impact Wall. Share whatever you have.</p>
+
+    <div class="field" style="margin-top:24px">
+      <label>Partnerships that helped</label>
+      <div class="prompt">Which partners supported you, and how did they contribute? (Partner organisations, nature of support, what they made possible.)</div>
+      <textarea id="ex-partnerships" placeholder="e.g. Christ University hosted our Run in Red and mobilised 300 students…" oninput="onExtra()"></textarea>
     </div>
-    <div class="step-nav"><button class="btn btn-ghost" onclick="go(${N})">← Back</button><button class="btn btn-purple" id="submitbtn" onclick="submitReport()">Submit final report ✓</button></div>
+
+    <div class="field">
+      <label>Innovations, best practices or a success story</label>
+      <div class="prompt">Any one innovation, one thing that worked really well, or one story that shows your impact. More than one is welcome too.</div>
+      <textarea id="ex-innovations" placeholder="e.g. We built a WhatsApp reminder flow that doubled follow-up visits. One vendor told us…" oninput="onExtra()"></textarea>
+    </div>
+
+    <div class="field">
+      <label>Did you do more than you pledged?</label>
+      <div class="prompt">If you changed your pledge along the way, or did extra beyond what you committed to, tell us here.</div>
+      <textarea id="ex-more" placeholder="Optional. Anything extra or different from the original pledge." oninput="onExtra()"></textarea>
+    </div>
+
+    <div class="field">
+      <label>Photos, videos, or supporting evidence</label>
+      <div class="prompt">Case studies, testimonials, photographs, videos, reports or media articles. Upload a file, or paste a link to a folder.</div>
+      <div class="drop" id="ex-drop" onclick="document.getElementById('ex-file').click()">
+        <div class="ico"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></div>
+        <div class="t"><strong id="ex-dt">Add a photo or file (optional)</strong><span id="ex-ds">Photographs, a case study, a report, testimonials</span></div>
+        <input type="file" id="ex-file" style="display:none" onchange="onExtraFile(this)">
+      </div>
+      <div class="linkrow field" style="margin-top:12px">
+        <label>Or paste a link (video, Drive folder, media article)</label>
+        <input type="url" id="ex-link" placeholder="https://…" oninput="onExtra()">
+      </div>
+    </div>
+
+    <div class="step-nav"><button class="btn btn-ghost" onclick="go(${N})">← Back</button><button class="btn btn-primary" onclick="go(${N+2})">Review &nbsp;→</button></div>
   </div></div>`;
 
+  // REVIEW step
   html+=`
-  <div class="step" data-i="${N+2}"><div class="step-inner"><div class="done-wrap">
+  <div class="step" data-i="${N+2}"><div class="step-inner">
+    <div class="eyebrow o">Almost done</div>
+    <h1 class="big">Here's everything, ${PLEDGE.org}.</h1>
+    <p class="lede">A quick look before it reaches the Arogya City technical team. Tap any line to change it.</p>
+    <div class="rev-list" id="revlist"></div>
+    <div class="field" style="margin-top:26px">
+      <label>Anything else you'd like us to know?</label>
+      <div class="prompt">Optional. Whether you'd like to renew this pledge for Edition III, or anything you need from the Arogya City team.</div>
+      <textarea id="closing" placeholder="Optional, but we'd genuinely love to hear it." oninput="onClosing()"></textarea>
+    </div>
+
+    <div class="consent" id="consent-box" style="margin-top:22px;background:var(--paper);border:1px solid var(--line);border-radius:12px;padding:16px 18px;display:flex;gap:12px;align-items:flex-start;cursor:pointer" onclick="toggleConsent()">
+      <div id="consent-check" style="width:22px;height:22px;border-radius:6px;border:2px solid var(--line);flex:none;display:flex;align-items:center;justify-content:center;transition:.15s;margin-top:1px"></div>
+      <div style="font-size:13.5px;color:var(--ink);line-height:1.5">I'm happy for Arogya City to use the photos, stories and materials we've shared here to celebrate this work publicly, including on the Impact Wall, in reports, and on social media. We confirm we have the right to share them.</div>
+    </div>
+
+    <div class="step-nav"><button class="btn btn-ghost" onclick="go(${N+1})">← Back</button><button class="btn btn-purple" id="submitbtn" onclick="submitReport()">Submit final report ✓</button></div>
+  </div></div>`;
+
+  // DONE step
+  html+=`
+  <div class="step" data-i="${N+3}"><div class="step-inner"><div class="done-wrap">
     <div class="seal">✓</div>
     <h1>Pledge closed. Thank you.</h1>
-    <p>Your final report is with the Arogya City Secretariat.</p>
+    <p>Your final report is with the Arogya City technical team.</p>
     <p>We'll be in touch about featuring your impact on the public Impact Wall, and about carrying this forward into Edition III.</p>
-    <div class="partners-foot"><div class="cap">An initiative for a healthy Bengaluru by</div><img src="assets/logo-partners.png" alt="Rotary District 3190 · Arogya World · B.PAC"></div>
+    <div class="partners-foot"><div class="cap">An initiative for a healthy Bengaluru by</div><img src="assets/logo-partners.png" alt="Arogya City partners"></div>
   </div></div></div>`;
 
   stage.innerHTML=html;
@@ -157,6 +209,13 @@ function restoreInputs(){
     if(st[i].file_url){ markFile(i, st[i].file_name); }
   });
   if(SUB.closing) document.getElementById('closing').value=SUB.closing;
+  // restore extra story fields
+  if(EXTRA.partnerships) document.getElementById('ex-partnerships').value=EXTRA.partnerships;
+  if(EXTRA.innovations) document.getElementById('ex-innovations').value=EXTRA.innovations;
+  if(EXTRA.more_than_pledged) document.getElementById('ex-more').value=EXTRA.more_than_pledged;
+  if(EXTRA.link_url) document.getElementById('ex-link').value=EXTRA.link_url;
+  if(EXTRA.file_url){ const drop=document.getElementById('ex-drop'); drop.classList.add('has'); document.getElementById('ex-dt').textContent=EXTRA.file_name||'File added'; document.getElementById('ex-ds').textContent='Added. Tap to replace.'; }
+  paintConsent();
 }
 
 function paintMeter(i){
@@ -211,8 +270,52 @@ function go(target){
   const prog=Math.min(step,TOTAL_STEPS-1)/(TOTAL_STEPS-1)*100;
   document.getElementById('rail').style.width=prog+'%';
   document.querySelectorAll('.pip').forEach((p,idx)=>{p.classList.toggle('done',idx<step);p.classList.toggle('current',idx===step);});
-  if(step===N+1) renderReview();
+  if(step===N+2) renderReview();
   const active=document.querySelector('.step.active'); if(active) active.scrollTop=0;
+}
+
+// require a number before leaving a commitment step
+function nextFromCommit(i){
+  if(!st[i].actual || st[i].actual<=0){
+    const el=document.getElementById('ain-'+i);
+    el.style.borderBottomColor='var(--rose,#c0435f)';
+    el.focus();
+    toast('Please enter the number you reached before continuing.');
+    return;
+  }
+  go(i+2 <= N ? i+2 : N+1); // next commitment, or the story step after the last
+}
+
+// extra story fields
+function onExtra(){
+  EXTRA.partnerships=(document.getElementById('ex-partnerships')||{}).value||'';
+  EXTRA.innovations=(document.getElementById('ex-innovations')||{}).value||'';
+  EXTRA.more_than_pledged=(document.getElementById('ex-more')||{}).value||'';
+  EXTRA.link_url=(document.getElementById('ex-link')||{}).value||'';
+  scheduleSave();
+}
+async function onExtraFile(input){
+  const f=input.files[0]; if(!f) return;
+  if(f.size > 25*1024*1024){ toast('That file is over 25 MB. Please paste a link instead.'); input.value=''; return; }
+  document.getElementById('ex-dt').textContent='Uploading…';
+  try{
+    const res=await DB.uploadEvidence(PLEDGE.token, 'extra', f);
+    EXTRA.file_url=res.url; EXTRA.file_name=res.name;
+    const drop=document.getElementById('ex-drop'); drop.classList.add('has');
+    document.getElementById('ex-dt').textContent=res.name;
+    document.getElementById('ex-ds').textContent='Added. Tap to replace.';
+    scheduleSave();
+  }catch(e){ console.error(e); toast("Upload didn't go through. Please try again."); document.getElementById('ex-dt').textContent='Add a photo or file (optional)'; }
+}
+function toggleConsent(){
+  EXTRA.consent=!EXTRA.consent;
+  paintConsent();
+  scheduleSave();
+}
+function paintConsent(){
+  const box=document.getElementById('consent-check'); if(!box)return;
+  if(EXTRA.consent){ box.style.background='var(--green)'; box.style.borderColor='var(--green)'; box.innerHTML='<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>'; }
+  else { box.style.background='transparent'; box.style.borderColor='var(--line)'; box.innerHTML=''; }
 }
 
 let saveTimer=null;
@@ -230,7 +333,7 @@ async function doSave(status){
   const answers=st.map(a=>({actual:a.actual,story:a.story,file_url:a.file_url,file_name:a.file_name,link_url:a.link_url}));
   const closing=(document.getElementById('closing')||{}).value||SUB.closing||'';
   try{
-    await DB.saveAnswers(PLEDGE.token, answers, closing, status || (SUB.status==='submitted'?'submitted':'partial'));
+    await DB.saveAnswers(PLEDGE.token, answers, closing, status || (SUB.status==='submitted'?'submitted':'partial'), EXTRA);
     const s=document.querySelector('.saver');
     s.querySelector('.dot').style.background='var(--green)';
     document.getElementById('savetxt').textContent='Saved';
@@ -238,10 +341,20 @@ async function doSave(status){
 }
 
 async function submitReport(){
+  // require every commitment to have a number
+  const missing=st.findIndex(a=>!a.actual || a.actual<=0);
+  if(missing>=0){ toast('Please fill the number reached for every commitment first.'); go(missing+1); return; }
+  if(!EXTRA.consent){
+    const box=document.getElementById('consent-box');
+    box.style.borderColor='var(--rose,#c0435f)';
+    box.scrollIntoView({behavior:'smooth',block:'center'});
+    toast('Please tick the consent box so we can celebrate your work.');
+    return;
+  }
   const btn=document.getElementById('submitbtn'); btn.disabled=true; btn.textContent='Submitting…';
   await doSave('submitted');
   SUB.status='submitted';
-  go(N+2);
+  go(N+3);
 }
 
 boot();
