@@ -10,3 +10,4 @@ const CLAUDE_PROXY_URL = "";
 
 // --- do not edit below ---
 window.AC_CONFIG = { SUPABASE_URL, SUPABASE_ANON_KEY, ADMIN_PASSWORD, EVIDENCE_BUCKET, CLAUDE_PROXY_URL };
+window.sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
