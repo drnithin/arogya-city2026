@@ -30,8 +30,9 @@ const DB = {
     }
     return sub;
   },
-  async saveAnswers(token, answers, closing, status) {
+  async saveAnswers(token, answers, closing, status, extra) {
     const patch = { answers, closing };
+    if (extra) patch.extra = extra;
     if (status) patch.status = status;
     if (status === 'submitted') patch.submitted_at = new Date().toISOString();
     const { error } = await sb.from('submissions').update(patch).eq('token', token);
