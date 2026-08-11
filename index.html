@@ -3,248 +3,147 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Arogya City · Close out your pledge</title>
+<title>Arogya City · Pledge Portal</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Inter:wght@400;450;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="assets/styles.css">
+<style>
+  body{overflow-y:auto}
+  .home-top{background:#fff;border-bottom:1px solid var(--line);padding:16px 30px;display:flex;align-items:center;justify-content:space-between}
+  .home-top img{height:34px}
+  .home-top .lockbtn{font-size:12px;color:var(--ink-soft);border:1px solid var(--line);background:#fff;border-radius:20px;padding:6px 14px}
+  .home-top .lockbtn:hover{border-color:var(--purple);color:var(--purple)}
+  .home-hero{max-width:1000px;margin:0 auto;padding:52px 26px 20px}
+  .home-hero .eyebrow{color:var(--orange)}
+  .home-hero h1{font-family:'Fraunces',serif;font-weight:500;font-size:clamp(30px,5vw,44px);line-height:1.08;letter-spacing:-.02em;margin-bottom:14px;max-width:20ch}
+  .home-hero h1 em{font-style:normal;color:var(--green)}
+  .home-hero p{font-size:16.5px;color:var(--ink-soft);max-width:58ch}
+  .snapshot{max-width:1000px;margin:30px auto 0;padding:0 26px;display:grid;grid-template-columns:repeat(4,1fr);gap:14px}
+  .snap{background:#fff;border:1px solid var(--line);border-radius:14px;padding:18px 20px;box-shadow:var(--shadow)}
+  .snap .n{font-family:'Fraunces',serif;font-weight:600;font-size:30px;line-height:1;letter-spacing:-.02em}
+  .snap .l{font-size:12px;color:var(--ink-soft);margin-top:7px}
+  .snap.a .n{color:var(--green-deep)} .snap.b .n{color:var(--orange)} .snap.c .n{color:var(--ink-soft)} .snap.d .n{color:var(--purple)}
+  .tools{max-width:1000px;margin:36px auto 0;padding:0 26px}
+  .tools h2{font-family:'Fraunces',serif;font-weight:500;font-size:22px;margin-bottom:4px}
+  .tools .sub{font-size:14px;color:var(--ink-soft);margin-bottom:20px}
+  .tool-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:18px}
+  .tool-card{background:#fff;border:1px solid var(--line);border-radius:18px;box-shadow:var(--shadow);padding:26px 24px;text-decoration:none;color:inherit;display:flex;flex-direction:column;transition:transform .22s,box-shadow .22s;position:relative;overflow:hidden}
+  .tool-card::before{content:"";position:absolute;top:0;left:0;right:0;height:4px}
+  .tool-card:hover{transform:translateY(-3px);box-shadow:0 1px 2px rgba(40,30,50,.04),0 22px 50px -22px rgba(40,30,50,.3)}
+  .tool-card.dash::before{background:var(--purple)}
+  .tool-card.intake::before{background:var(--orange)}
+  .tool-card.wall::before{background:var(--green)}
+  .tool-ic{width:48px;height:48px;border-radius:13px;display:flex;align-items:center;justify-content:center;margin-bottom:16px}
+  .tool-card.dash .tool-ic{background:#f4e9f6;color:var(--purple)}
+  .tool-card.intake .tool-ic{background:#fdf0e1;color:var(--orange)}
+  .tool-card.wall .tool-ic{background:#e2f7ee;color:var(--green-deep)}
+  .tool-card h3{font-family:'Fraunces',serif;font-size:20px;font-weight:600;margin-bottom:7px}
+  .tool-card p{font-size:13.5px;color:var(--ink-soft);line-height:1.5;flex:1}
+  .tool-card .go{margin-top:16px;font-size:13.5px;font-weight:600;display:flex;align-items:center;gap:6px}
+  .tool-card.dash .go{color:var(--purple)}
+  .tool-card.intake .go{color:var(--orange)}
+  .tool-card.wall .go{color:var(--green-deep)}
+  .home-foot{max-width:1000px;margin:50px auto 0;padding:34px 26px 60px;border-top:1px solid var(--line);text-align:center}
+  .home-foot .cap{font-size:11.5px;color:var(--ink-soft);margin-bottom:14px;font-family:'IBM Plex Mono',monospace;letter-spacing:.06em;text-transform:uppercase}
+  .home-foot img{height:44px;margin:0 auto;opacity:.95}
+  @media (max-width:640px){.snapshot{grid-template-columns:repeat(2,1fr)}}
+</style>
 </head>
 <body>
 
-<!-- loading / error states -->
-<div class="screen-msg" id="loading">
-  <div class="spin"></div>
-  <p>Loading your pledge…</p>
+<div class="gate" id="gate">
+  <div class="card">
+    <img src="assets/logo-main.png" alt="Arogya City">
+    <h2>Pledge Portal</h2>
+    <p>Enter the team password to open the control centre.</p>
+    <div class="err" id="gate-err"></div>
+    <input type="password" id="gate-pw" placeholder="Team password" onkeydown="if(event.key==='Enter')tryLogin()">
+    <button class="btn btn-purple" style="width:100%" onclick="tryLogin()">Enter</button>
+    <p style="margin-top:16px;font-size:12px">Are you an organisation with a pledge link? Use the personal link the Secretariat emailed you.</p>
+  </div>
 </div>
 
-<div class="screen-msg hidden" id="badlink">
-  <h2>We couldn't find that pledge</h2>
-  <p>This link may be incomplete or out of date. Please use the personal link the Arogya City Secretariat sent you, or write back to them and we'll re-send it.</p>
-</div>
+<div id="home" class="hidden">
+  <div class="home-top">
+    <img src="assets/logo-main.png" alt="Arogya City Bengaluru">
+    <button class="lockbtn" onclick="logout()">Lock</button>
+  </div>
 
-<!-- main app (hidden until pledge loads) -->
-<div class="app hidden" id="app">
-  <div class="top">
-    <img class="logo" src="assets/logo-main.png" alt="Arogya City Bengaluru">
-    <div class="top-right">
-      <div class="saver"><span class="dot"></span> <span id="savetxt">Saved</span></div>
+  <div class="home-hero">
+    <div class="eyebrow o">Secretariat control centre · Edition II</div>
+    <h1>Everything you need to run the <em>Arogya City</em> pledge closeout.</h1>
+    <p>Track who has reported, add new organisations from their pledge documents, and showcase the impact publicly. All in one place.</p>
+  </div>
+
+  <div class="snapshot" id="snapshot">
+    <div class="snap a"><div class="n" id="s-sub">–</div><div class="l">Reports submitted</div></div>
+    <div class="snap b"><div class="n" id="s-par">–</div><div class="l">In progress</div></div>
+    <div class="snap c"><div class="n" id="s-no">–</div><div class="l">Not opened</div></div>
+    <div class="snap d"><div class="n" id="s-rate">–</div><div class="l">Completion rate</div></div>
+  </div>
+
+  <div class="tools">
+    <h2>Your tools</h2>
+    <div class="sub">Pick where you want to go.</div>
+    <div class="tool-grid">
+      <a class="tool-card dash" href="admin/">
+        <div class="tool-ic"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9"/><rect x="14" y="3" width="7" height="5"/><rect x="14" y="12" width="7" height="9"/><rect x="3" y="16" width="7" height="5"/></svg></div>
+        <h3>Dashboard</h3>
+        <p>See every organisation's status, copy their private links, send reminders, and read submitted reports.</p>
+        <div class="go">Open dashboard &rarr;</div>
+      </a>
+      <a class="tool-card intake" href="admin/intake.html">
+        <div class="tool-ic"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg></div>
+        <h3>Add an organisation</h3>
+        <p>Upload a pledge document and we'll draft the commitments, then hand you a private reporting link to send.</p>
+        <div class="go">Open intake tool &rarr;</div>
+      </a>
+      <a class="tool-card wall" href="wall.html" target="_blank">
+        <div class="tool-ic"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/></svg></div>
+        <h3>Impact Wall</h3>
+        <p>The public showcase of every pledge delivered. Share the link, and it grows as organisations submit.</p>
+        <div class="go">View Impact Wall &#8599;</div>
+      </a>
     </div>
   </div>
-  <div class="rail"><div class="rail-fill" id="rail"></div></div>
-  <div class="stage" id="stage"></div>
-  <div class="pips" id="pips"></div>
-</div>
 
-<div class="toast" id="toast"></div>
+  <div class="home-foot">
+    <div class="cap">An initiative for a healthy Bengaluru by</div>
+    <img src="assets/logo-partners.png" alt="Rotary District 3190 · Arogya World · B.PAC">
+  </div>
+</div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="assets/config.js"></script>
 <script src="assets/db.js"></script>
 <script>
-const inr = n => (n||0).toLocaleString('en-IN');
-function toast(m){const t=document.getElementById('toast');t.textContent=m;t.classList.add('show');clearTimeout(window._t);window._t=setTimeout(()=>t.classList.remove('show'),2600);}
-
-let PLEDGE=null, SUB=null, st=[], step=0, N=0, TOTAL_STEPS=0;
-
-function tokenFromURL(){
-  const p=new URLSearchParams(location.search);
-  return p.get('t') || p.get('token');
+function tryLogin(){
+  if(document.getElementById('gate-pw').value===window.AC_CONFIG.ADMIN_PASSWORD){
+    sessionStorage.setItem('ac_admin','1'); show();
+  } else document.getElementById('gate-err').textContent='That password did not match.';
 }
-
-async function boot(){
-  const token = tokenFromURL();
-  if(!token){ return fail(); }
+function logout(){ sessionStorage.removeItem('ac_admin'); location.reload(); }
+function show(){
+  document.getElementById('gate').classList.add('hidden');
+  document.getElementById('home').classList.remove('hidden');
+  loadSnapshot();
+}
+if(sessionStorage.getItem('ac_admin')==='1') show();
+async function loadSnapshot(){
   try{
-    PLEDGE = await DB.getPledge(token);
-    SUB = await DB.openSubmission(PLEDGE);
-  }catch(e){ console.error(e); return fail(); }
-
-  N = PLEDGE.commitments.length;
-  TOTAL_STEPS = N + 3;
-  // hydrate saved answers
-  st = PLEDGE.commitments.map((c,i)=>{
-    const a = (SUB.answers && SUB.answers[i]) || {};
-    return { actual:a.actual||0, story:a.story||'', file_url:a.file_url||null, file_name:a.file_name||null, link_url:a.link_url||'' };
-  });
-
-  document.getElementById('loading').classList.add('hidden');
-  document.getElementById('app').classList.remove('hidden');
-  buildSteps();
-  // resume where they left off if already submitted
-  if(SUB.status==='submitted'){ go(N+2); } else { go(0); }
-  restoreInputs();
+    const data=await DB.allForDashboard();
+    const statusOf=d=>d.sub?d.sub.status:'not_opened';
+    const sub=data.filter(d=>statusOf(d)==='submitted').length;
+    const par=data.filter(d=>statusOf(d)==='partial').length;
+    const no=data.filter(d=>statusOf(d)==='not_opened').length;
+    const total=data.length||1;
+    document.getElementById('s-sub').textContent=sub;
+    document.getElementById('s-par').textContent=par;
+    document.getElementById('s-no').textContent=no;
+    document.getElementById('s-rate').textContent=Math.round(sub/total*100)+'%';
+  }catch(e){ console.error(e); }
 }
-function fail(){ document.getElementById('loading').classList.add('hidden'); document.getElementById('badlink').classList.remove('hidden'); }
-
-function buildSteps(){
-  const stage=document.getElementById('stage');
-  const metaHTML=`<div class="meta"><span>Contact&nbsp;<b>${PLEDGE.contact||'-'}</b></span><span>Period&nbsp;<b>2024 to 2026</b></span><span>To report&nbsp;<b>${N} commitments</b></span></div>`;
-  let html=`
-  <div class="step" data-i="0"><div class="step-inner">
-    <div class="eyebrow g">Final report · Edition II</div>
-    <h1 class="big">Welcome back, <em>${PLEDGE.org}</em>. Let's celebrate what you did.</h1>
-    <p class="lede">Two years ago you made a pledge for a healthier Bengaluru. This is not a fresh form to fill. We've brought your own words back, so all you do is tell us how it went, in your voice, at your pace.</p>
-    <div class="recap"><div class="tag">Your 2024 pledge</div><p>${PLEDGE.recap||''}</p></div>
-    ${metaHTML}
-    <div class="actions"><button class="btn btn-primary" onclick="go(1)">Start &nbsp;→</button><span style="font-size:13px;color:var(--ink-soft)">Takes about 5 minutes. Everything saves as you go.</span></div>
-  </div></div>`;
-
-  PLEDGE.commitments.forEach((c,i)=>{
-    html+=`
-    <div class="step" data-i="${i+1}"><div class="step-inner">
-      <div class="eyebrow ${c.mode==='online'?'p':'g'}">Commitment ${i+1} of ${N}</div>
-      <div class="c-head"><div class="c-badge ${c.mode}">${i+1}</div><div><h2>${c.title}</h2><div class="kicker">${c.mode==='online'?'Online campaign':'On-ground activity'}</div></div></div>
-      <div class="said"><span class="lbl">What you pledged</span>${c.said}</div>
-      <div class="duo">
-        <div class="box target"><div class="k">Your goal</div><div class="num">${inr(c.committed)}</div><div class="u">${c.unit}</div></div>
-        <div class="join">→</div>
-        <div class="box"><div class="k">What you reached</div><input class="achieved-in" id="ain-${i}" inputmode="numeric" placeholder="0" oninput="onAch(${i})"><div class="u">${c.unit}</div></div>
-      </div>
-      <div class="meter"><div class="meter-fill" id="mf-${i}"></div></div>
-      <div class="meter-note" id="mn-${i}"></div>
-      <div class="field">
-        <label>Tell the story in a line or two</label>
-        <div class="prompt">${c.prompt||''}</div>
-        <textarea id="story-${i}" placeholder="In your own words. No wrong answers here." oninput="onStory(${i})"></textarea>
-      </div>
-      <div class="drop" id="drop-${i}" onclick="document.getElementById('file-${i}').click()">
-        <div class="ico"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></div>
-        <div class="t"><strong id="dt-${i}">Add a photo or document (optional)</strong><span id="ds-${i}">Pictures, a short report, a screenshot, an attendance list</span></div>
-        <input type="file" id="file-${i}" style="display:none" onchange="onFile(${i},this)">
-      </div>
-      <div class="linkrow field" style="margin-top:16px">
-        <label>Have a video or a big folder? Paste a link instead</label>
-        <div class="hint" style="margin-bottom:8px">A YouTube, Google Drive or Instagram link works. Better than uploading large videos.</div>
-        <input type="url" id="link-${i}" placeholder="https://…" oninput="onLink(${i})">
-      </div>
-      <div class="step-nav"><button class="btn btn-ghost" onclick="go(${i})">← Back</button><button class="btn btn-primary" onclick="go(${i+2})">${i+1<N?'Next commitment':'Review'} &nbsp;→</button></div>
-    </div></div>`;
-  });
-
-  html+=`
-  <div class="step" data-i="${N+1}"><div class="step-inner">
-    <div class="eyebrow o">Almost done</div>
-    <h1 class="big">Here's everything, ${PLEDGE.org}.</h1>
-    <p class="lede">A quick look before it reaches the Arogya City Secretariat. Tap any line to change it.</p>
-    <div class="rev-list" id="revlist"></div>
-    <div class="field" style="margin-top:26px">
-      <label>Anything you'd like us to know?</label>
-      <div class="prompt">What worked, what was hard, or whether you'd like to renew this pledge for Edition III. This is what we love to showcase on the public Impact Wall.</div>
-      <textarea id="closing" placeholder="Optional, but we'd genuinely love to hear it." oninput="onClosing()"></textarea>
-    </div>
-    <div class="step-nav"><button class="btn btn-ghost" onclick="go(${N})">← Back</button><button class="btn btn-purple" id="submitbtn" onclick="submitReport()">Submit final report ✓</button></div>
-  </div></div>`;
-
-  html+=`
-  <div class="step" data-i="${N+2}"><div class="step-inner"><div class="done-wrap">
-    <div class="seal">✓</div>
-    <h1>Pledge closed. Thank you.</h1>
-    <p>Your final report is with the Arogya City Secretariat.</p>
-    <p>We'll be in touch about featuring your impact on the public Impact Wall, and about carrying this forward into Edition III.</p>
-    <div class="partners-foot"><div class="cap">An initiative for a healthy Bengaluru by</div><img src="assets/logo-partners.png" alt="Rotary District 3190 · Arogya World · B.PAC"></div>
-  </div></div></div>`;
-
-  stage.innerHTML=html;
-  const pips=document.getElementById('pips'); pips.innerHTML='';
-  for(let i=0;i<TOTAL_STEPS-1;i++){const d=document.createElement('div');d.className='pip';d.id='pip-'+i;pips.appendChild(d);}
-}
-
-function restoreInputs(){
-  PLEDGE.commitments.forEach((c,i)=>{
-    if(st[i].actual){ document.getElementById('ain-'+i).value=inr(st[i].actual); paintMeter(i); }
-    if(st[i].story) document.getElementById('story-'+i).value=st[i].story;
-    if(st[i].link_url) document.getElementById('link-'+i).value=st[i].link_url;
-    if(st[i].file_url){ markFile(i, st[i].file_name); }
-  });
-  if(SUB.closing) document.getElementById('closing').value=SUB.closing;
-}
-
-function paintMeter(i){
-  const c=PLEDGE.commitments[i], v=st[i].actual;
-  const pct=Math.min(100,Math.round(v/c.committed*100));
-  document.getElementById('mf-'+i).style.width=pct+'%';
-  const n=document.getElementById('mn-'+i);
-  if(!v){n.textContent='';n.classList.remove('win');}
-  else if(v>=c.committed){n.innerHTML=`You hit your goal. <b>${Math.round(v/c.committed*100)}%</b> of what you pledged.`;n.classList.add('win');}
-  else{n.innerHTML=`<b>${pct}%</b> of your ${inr(c.committed)} goal. Every bit counts.`;n.classList.remove('win');}
-}
-
-function onAch(i){
-  const el=document.getElementById('ain-'+i);
-  const v=parseInt((el.value||'').replace(/[^0-9]/g,''),10)||0;
-  el.value=v?inr(v):''; st[i].actual=v; paintMeter(i); scheduleSave();
-}
-function onStory(i){ st[i].story=document.getElementById('story-'+i).value; scheduleSave(); }
-function onLink(i){ st[i].link_url=document.getElementById('link-'+i).value; scheduleSave(); }
-function onClosing(){ scheduleSave(); }
-
-async function onFile(i, input){
-  const f=input.files[0]; if(!f) return;
-  if(f.size > 25*1024*1024){ toast("That file is over 25 MB. For big videos, paste a link below instead."); input.value=''; return; }
-  const drop=document.getElementById('drop-'+i); drop.classList.add('up');
-  document.getElementById('dt-'+i).textContent='Uploading…';
-  try{
-    const res=await DB.uploadEvidence(PLEDGE.token, i, f);
-    st[i].file_url=res.url; st[i].file_name=res.name;
-    markFile(i,res.name); scheduleSave();
-  }catch(e){ console.error(e); toast("Upload didn't go through. Please try again."); document.getElementById('dt-'+i).textContent='Add a photo or document (optional)'; }
-  drop.classList.remove('up');
-}
-function markFile(i,name){
-  const drop=document.getElementById('drop-'+i); drop.classList.add('has');
-  document.getElementById('dt-'+i).textContent=name;
-  document.getElementById('ds-'+i).textContent='Added. Tap to replace.';
-}
-
-function renderReview(){
-  const rl=document.getElementById('revlist'); if(!rl)return;
-  rl.innerHTML=PLEDGE.commitments.map((c,i)=>`
-    <div class="rev-item"><div class="rnum">${i+1}</div>
-      <div class="rmid"><div class="rt">${c.title}</div><div class="rs">${st[i].story?st[i].story.slice(0,64)+(st[i].story.length>64?'…':''):'No story added yet'}</div></div>
-      <div class="rval">${inr(st[i].actual)}<small>of ${inr(c.committed)} ${c.unit}</small></div>
-      <button class="rev-edit" onclick="go(${i+1})">Edit</button></div>`).join('');
-}
-
-function go(target){
-  step=target;
-  document.querySelectorAll('.step').forEach(s=>s.classList.toggle('active',+s.dataset.i===step));
-  const prog=Math.min(step,TOTAL_STEPS-1)/(TOTAL_STEPS-1)*100;
-  document.getElementById('rail').style.width=prog+'%';
-  document.querySelectorAll('.pip').forEach((p,idx)=>{p.classList.toggle('done',idx<step);p.classList.toggle('current',idx===step);});
-  if(step===N+1) renderReview();
-  const active=document.querySelector('.step.active'); if(active) active.scrollTop=0;
-}
-
-let saveTimer=null;
-function scheduleSave(){
-  setSaving();
-  clearTimeout(saveTimer);
-  saveTimer=setTimeout(doSave, 700);
-}
-function setSaving(){
-  const s=document.querySelector('.saver');
-  s.querySelector('.dot').style.background='var(--orange)';
-  document.getElementById('savetxt').textContent='Saving…';
-}
-async function doSave(status){
-  const answers=st.map(a=>({actual:a.actual,story:a.story,file_url:a.file_url,file_name:a.file_name,link_url:a.link_url}));
-  const closing=(document.getElementById('closing')||{}).value||SUB.closing||'';
-  try{
-    await DB.saveAnswers(PLEDGE.token, answers, closing, status || (SUB.status==='submitted'?'submitted':'partial'));
-    const s=document.querySelector('.saver');
-    s.querySelector('.dot').style.background='var(--green)';
-    document.getElementById('savetxt').textContent='Saved';
-  }catch(e){ console.error(e); document.getElementById('savetxt').textContent='Save failed'; }
-}
-
-async function submitReport(){
-  const btn=document.getElementById('submitbtn'); btn.disabled=true; btn.textContent='Submitting…';
-  await doSave('submitted');
-  SUB.status='submitted';
-  go(N+2);
-}
-
-boot();
 </script>
 </body>
 </html>
