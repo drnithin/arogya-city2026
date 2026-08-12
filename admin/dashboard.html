@@ -1,0 +1,426 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Arogya City · Technical Team</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Inter:wght@400;450;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../assets/styles.css">
+</head>
+<body>
+
+<!-- password gate -->
+<div class="gate" id="gate">
+  <div class="card">
+    <img src="../assets/logo-main.png" alt="Arogya City">
+    <h2>Technical Team</h2>
+    <p>Enter the team password to view pledge progress.</p>
+    <div class="err" id="gate-err"></div>
+    <input type="password" id="gate-pw" placeholder="Team password" onkeydown="if(event.key==='Enter')tryLogin()">
+    <button class="btn btn-purple" style="width:100%" onclick="tryLogin()">Enter</button>
+  </div>
+</div>
+
+<!-- dashboard -->
+<div class="app hidden" id="dash" style="height:100dvh">
+  <div class="admin-top">
+    <h2><img src="../assets/logo-main.png" style="height:30px"> <span class="badge">TECHNICAL TEAM</span></h2>
+    <div style="display:flex;gap:10px;align-items:center">
+      <a href="index.html" class="linkbtn" style="text-decoration:none">⌂ Home</a>
+      <a href="intake.html" class="linkbtn" style="text-decoration:none">+ Add from document</a>
+      <a href="../wall.html" class="linkbtn" style="text-decoration:none" target="_blank">Impact Wall ↗</a>
+      <button class="linkbtn" onclick="logout()">Lock</button>
+    </div>
+  </div>
+  <div class="admin-body">
+    <div class="stat-row" id="stats"></div>
+    <div class="adm-progress">
+      <div class="ah"><h3>Edition II closeout progress</h3><span id="adm-sub"></span></div>
+      <div class="adm-bar" id="admbar"></div>
+      <div class="adm-legend">
+        <span><i style="background:var(--green)"></i> Submitted</span>
+        <span><i style="background:var(--yellow)"></i> In progress</span>
+        <span><i style="background:var(--line)"></i> Not opened</span>
+      </div>
+    </div>
+    <div class="toolbar">
+      <h3>Organisations</h3>
+      <div id="chasebar"></div>
+      <div style="display:flex;gap:10px">
+        <button class="linkbtn" onclick="exportAll()">⬇ Download all (Excel)</button>
+        <button class="addbtn" onclick="openAdd()">+ Add organisation</button>
+      </div>
+    </div>
+    <table>
+      <thead><tr><th>Organisation</th><th>Status</th><th>Follow-up</th><th>Reported</th><th>Last activity</th><th>Actions</th></tr></thead>
+      <tbody id="rows"></tbody>
+    </table>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+<div id="modal-root"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script src="../assets/config.js"></script>
+<script src="../assets/db.js"></script>
+<script>
+const inr=n=>(n||0).toLocaleString('en-IN');
+function toast(m){const t=document.getElementById('toast');t.textContent=m;t.classList.add('show');clearTimeout(window._t);window._t=setTimeout(()=>t.classList.remove('show'),2600);}
+let DATA=[];
+
+// --- gate ---
+function tryLogin(){
+  const pw=document.getElementById('gate-pw').value;
+  if(pw===window.AC_CONFIG.ADMIN_PASSWORD){
+    sessionStorage.setItem('ac_admin','1');
+    showDash();
+  }else{ document.getElementById('gate-err').textContent='That password did not match. Try again.'; }
+}
+function logout(){ sessionStorage.removeItem('ac_admin'); location.reload(); }
+function showDash(){
+  document.getElementById('gate').classList.add('hidden');
+  document.getElementById('dash').classList.remove('hidden');
+  load();
+}
+if(sessionStorage.getItem('ac_admin')==='1') showDash();
+
+// --- load + render ---
+async function load(){
+  try{ DATA=await DB.allForDashboard(); render(); }
+  catch(e){ console.error(e); toast('Could not load data. Check config.js keys.'); }
+}
+function statusOf(d){ return d.sub ? d.sub.status : 'not_opened'; }
+function reportedCount(d){
+  if(!d.sub || !d.sub.answers) return 0;
+  return d.sub.answers.filter(a=>a && a.actual>0).length;
+}
+function lastActivity(d){
+  if(!d.sub) return 'Link not opened';
+  if(d.sub.status==='not_opened') return 'Link not opened';
+  const t=d.sub.submitted_at||d.sub.updated_at;
+  if(!t) return '—';
+  const diff=(Date.now()-new Date(t))/1000;
+  if(diff<3600) return Math.max(1,Math.round(diff/60))+' min ago';
+  if(diff<86400) return Math.round(diff/3600)+' hr ago';
+  return Math.round(diff/86400)+' days ago';
+}
+
+function daysSince(t){ return t ? Math.floor((Date.now()-new Date(t))/86400000) : null; }
+
+// returns {level, label, needs} — needs=true means it wants chasing
+function followUp(d){
+  const s=statusOf(d);
+  if(s==='submitted') return {level:'done', label:'Done', needs:false};
+  const sub=d.sub||{};
+  const sentDays=daysSince(sub.sent_at);
+  if(sentDays===null){
+    // link not sent yet
+    return {level:'unsent', label:'Not sent yet', needs:false};
+  }
+  if(s==='not_opened'){
+    if(sentDays>=3) return {level:'red', label:`Not opened · ${sentDays}d`, needs:true};
+    return {level:'wait', label:`Sent ${sentDays}d ago`, needs:false};
+  }
+  // partial / in progress: chase if stalled since last activity
+  const stalled=daysSince(sub.updated_at);
+  if(stalled!==null && stalled>=5) return {level:'amber', label:`Stalled · ${stalled}d`, needs:true};
+  return {level:'ok', label:`Active`, needs:false};
+}
+
+let CHASE_ONLY=false;
+function toggleChase(){ CHASE_ONLY=!CHASE_ONLY; render(); }
+
+function render(){
+  const sub=DATA.filter(d=>statusOf(d)==='submitted').length;
+  const par=DATA.filter(d=>statusOf(d)==='partial').length;
+  const no=DATA.filter(d=>statusOf(d)==='not_opened').length;
+  const total=DATA.length||1;
+  const rate=Math.round(sub/total*100);
+  const chasing=DATA.filter(d=>followUp(d).needs).length;
+  document.getElementById('stats').innerHTML=`
+    <div class="stat submitted"><div class="n">${sub}</div><div class="l">Reports submitted</div></div>
+    <div class="stat partial"><div class="n">${par}</div><div class="l">In progress</div></div>
+    <div class="stat notopened"><div class="n">${no}</div><div class="l">Not yet opened</div></div>
+    <div class="stat rate"><div class="n">${rate}%</div><div class="l">Completion rate</div></div>`;
+  document.getElementById('adm-sub').textContent=`${sub} of ${DATA.length} organisations closed out`;
+  document.getElementById('admbar').innerHTML=`<div class="seg-sub" style="width:${sub/total*100}%"></div><div class="seg-par" style="width:${par/total*100}%"></div>`;
+
+  // chase filter bar
+  const chaseBar=document.getElementById('chasebar');
+  if(chaseBar){
+    chaseBar.innerHTML = chasing>0
+      ? `<button class="chasebtn ${CHASE_ONLY?'on':''}" onclick="toggleChase()">${CHASE_ONLY?'Showing '+chasing+' to chase · show all':'⚑ '+chasing+' need following up · show only these'}</button>`
+      : `<span style="font-size:13px;color:var(--green-deep)">✓ Nobody needs chasing right now</span>`;
+  }
+
+  const rows = DATA.map((d,idx)=>({d,idx,fu:followUp(d)}))
+    .filter(x=> !CHASE_ONLY || x.fu.needs);
+
+  document.getElementById('rows').innerHTML=rows.map(({d,idx,fu})=>{
+    const s=statusOf(d);
+    const n=d.pledge.commitments.length;
+    const rc=reportedCount(d);
+    const pct=Math.round(rc/(n||1)*100);
+    const pill={submitted:'Submitted',partial:'In progress',not_opened:'Not opened'}[s];
+    const link=`${location.origin}${location.pathname.replace(/admin\/.*/,'')}?t=${d.pledge.token}`;
+    const copyBtn=`<button class="linkbtn" onclick="copyAndSend('${d.pledge.token}','${link.replace(/'/g,"")}',this)">Copy link</button>`;
+    const editBtn=`<button class="viewbtn" onclick="openEdit(${idx})">Edit</button>`;
+    const viewBtn = s==='submitted' ? `<button class="viewbtn" onclick="openDetail(${idx})">View report</button>` : '';
+    const fuTag = `<span class="fu fu-${fu.level}">${fu.label}</span>`;
+    return `<tr>
+      <td class="org-cell">${d.pledge.org}<small>${d.pledge.contact||''}</small></td>
+      <td><span class="pill ${s}">${pill}</span></td>
+      <td>${fuTag}</td>
+      <td><span class="mini-bar"><span class="mini-fill" style="width:${pct}%"></span></span>${rc}/${n}</td>
+      <td style="color:var(--ink-soft);font-size:13px">${lastActivity(d)}</td>
+      <td>${copyBtn}${editBtn}${viewBtn}</td></tr>`;
+  }).join('');
+  if(rows.length===0){
+    document.getElementById('rows').innerHTML=`<tr><td colspan="6" style="text-align:center;color:var(--ink-soft);padding:26px">Nothing to chase. Everyone is on track.</td></tr>`;
+  }
+}
+
+// copy link AND record that we sent it (starts the follow-up clock)
+async function copyAndSend(token, link, btn){
+  navigator.clipboard.writeText(link).then(()=>{
+    btn.classList.add('copied'); btn.textContent='Copied ✓';
+    setTimeout(()=>{btn.classList.remove('copied');btn.textContent='Copy link';},1600);
+  });
+  try{ await DB.markSent(token); await load(); }catch(e){ console.error(e); }
+}
+
+// export everything to a two-sheet Excel workbook
+function exportAll(){
+  if(typeof XLSX==='undefined'){ toast('Export library still loading, try again in a moment.'); return; }
+  // Sheet 1: summary, one row per organisation
+  const summary=DATA.map(d=>{
+    const s=statusOf(d);
+    const ex=(d.sub&&d.sub.extra)||{};
+    const totalReached=(d.sub&&d.sub.answers||[]).reduce((a,x)=>a+((x&&x.actual)||0),0);
+    return {
+      'Organisation':d.pledge.org,
+      'Contact':d.pledge.contact||'',
+      'Pledge title':d.pledge.title||'',
+      'Status':{submitted:'Submitted',partial:'In progress',not_opened:'Not opened'}[s],
+      'Commitments':d.pledge.commitments.length,
+      'Total reached (sum)':totalReached,
+      'Partnerships':ex.partnerships||'',
+      'Innovations / success story':ex.innovations||'',
+      'Did more than pledged':ex.more_than_pledged||'',
+      'Closing note':(d.sub&&d.sub.closing)||'',
+      'Consent to public use':ex.consent?'Yes':'No',
+      'Evidence file':ex.file_url||'',
+      'Evidence link':ex.link_url||'',
+      'Submitted on':(d.sub&&d.sub.submitted_at)?new Date(d.sub.submitted_at).toLocaleDateString('en-IN'):''
+    };
+  });
+  // Sheet 2: detail, one row per commitment
+  const detail=[];
+  DATA.forEach(d=>{
+    d.pledge.commitments.forEach((c,i)=>{
+      const a=(d.sub&&d.sub.answers&&d.sub.answers[i])||{};
+      detail.push({
+        'Organisation':d.pledge.org,
+        'Commitment':c.title,
+        'Type':c.mode==='online'?'Online':'On-ground',
+        'Target':c.committed,
+        'Unit':c.unit,
+        'Reached':a.actual||0,
+        '% of target':c.committed?Math.round((a.actual||0)/c.committed*100)+'%':'',
+        'Their story':a.story||'',
+        'Evidence file':a.file_url||'',
+        'Evidence link':a.link_url||''
+      });
+    });
+  });
+  const wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(summary), 'Summary');
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(detail), 'By commitment');
+  const today=new Date().toISOString().slice(0,10);
+  XLSX.writeFile(wb, `Arogya-City-EditionII-reports-${today}.xlsx`);
+  toast('Downloaded. Two sheets: Summary and By commitment.');
+}
+
+function copyLink(link,btn){
+  navigator.clipboard.writeText(link).then(()=>{
+    btn.classList.add('copied'); btn.textContent='Copied ✓';
+    setTimeout(()=>{btn.classList.remove('copied');btn.textContent='Copy link';},1600);
+  });
+}
+
+// --- detail view ---
+function openDetail(idx){
+  const d=DATA[idx];
+  const rows=d.pledge.commitments.map((c,i)=>{
+    const a=(d.sub.answers&&d.sub.answers[i])||{};
+    const file=a.file_url?`<a href="${a.file_url}" target="_blank">📎 ${a.file_name||'file'}</a>`:'';
+    const link=a.link_url?`<a href="${a.link_url}" target="_blank">🔗 ${a.link_url}</a>`:'';
+    return `<div class="detail-c">
+      <div class="dt">${c.title}</div>
+      <div class="dm">Goal ${inr(c.committed)} ${c.unit}</div>
+      <div class="dv">${inr(a.actual||0)} <span style="font-size:12px;color:var(--ink-soft);font-family:'IBM Plex Mono',monospace">reached</span></div>
+      ${a.story?`<p style="font-size:13.5px;margin-top:8px">${a.story}</p>`:''}
+      <div style="margin-top:8px;display:flex;flex-direction:column;gap:4px">${file}${link}</div>
+    </div>`;
+  }).join('');
+  const closing=d.sub.closing?`<label style="display:block;font-weight:600;font-size:13px;margin:14px 0 6px">Anything else they told us</label><p style="font-size:14px;color:var(--ink-soft)">${escStr(d.sub.closing)}</p>`:'';
+  const ex=d.sub.extra||{};
+  const exBlock=(txt,label)=> txt?`<label style="display:block;font-weight:600;font-size:13px;margin:14px 0 4px">${label}</label><p style="font-size:14px;color:var(--ink-soft)">${escStr(txt)}</p>`:'';
+  let story='';
+  story+=exBlock(ex.partnerships,'Partnerships');
+  story+=exBlock(ex.innovations,'Innovations & success stories');
+  story+=exBlock(ex.more_than_pledged,'Did more than pledged');
+  if(ex.file_url) story+=`<div style="margin-top:10px"><a href="${ex.file_url}" target="_blank">📎 ${ex.file_name||'evidence file'}</a></div>`;
+  if(ex.link_url) story+=`<div style="margin-top:6px"><a href="${ex.link_url}" target="_blank">🔗 ${ex.link_url}</a></div>`;
+  const consent = ex.consent ? `<div style="margin-top:14px;font-size:12.5px;color:var(--green-deep)">✓ Consented to public use of photos & materials</div>`
+    : `<div style="margin-top:14px;font-size:12.5px;color:var(--ink-soft)">Consent for public use: not given</div>`;
+  const storyWrap = (story||consent) ? `<div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--line)"><div style="font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--purple);margin-bottom:4px">Story & impact</div>${story}${consent}</div>` : '';
+  document.getElementById('modal-root').innerHTML=`
+    <div class="modal-bg" onclick="if(event.target===this)closeModal()">
+      <div class="modal">
+        <div class="modal-h"><h3>${d.pledge.org} · final report</h3><button class="x" onclick="closeModal()">×</button></div>
+        <div class="modal-b">${rows}${closing}${storyWrap}</div>
+      </div>
+    </div>`;
+}
+function escStr(s){return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+
+// --- add organisation ---
+function openAdd(){
+  document.getElementById('modal-root').innerHTML=`
+    <div class="modal-bg" onclick="if(event.target===this)closeModal()">
+      <div class="modal">
+        <div class="modal-h"><h3>Add an organisation</h3><button class="x" onclick="closeModal()">×</button></div>
+        <div class="modal-b">
+          <label>Organisation name</label>
+          <input id="f-org" placeholder="e.g. Narayana Health">
+          <label>Primary contact</label>
+          <input id="f-contact" placeholder="e.g. Ms. Priya, CSR Lead">
+          <label>Pledge title</label>
+          <input id="f-title" placeholder="Short name of their pledge">
+          <label>Recap sentence <span class="small">(shown on their welcome screen, in your friendly voice)</span></label>
+          <textarea id="f-recap" rows="2" placeholder="You set out to…"></textarea>
+          <label>Commitments <span class="small">one per line, format: Title | goal number | unit | mode(online/offline)</span></label>
+          <textarea id="f-commit" rows="4" placeholder="Train restaurant owners | 100 | owners trained | offline
+Reach people online | 50000 | people engaged | online"></textarea>
+          <div style="margin-top:18px;display:flex;gap:10px;justify-content:flex-end">
+            <button class="linkbtn" onclick="closeModal()">Cancel</button>
+            <button class="addbtn" onclick="saveNewOrg()">Create + get link</button>
+          </div>
+        </div>
+      </div>
+    </div>`;
+}
+function slugify(s){ return s.toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'').slice(0,40); }
+async function saveNewOrg(){
+  const org=document.getElementById('f-org').value.trim();
+  if(!org){ toast('Please enter the organisation name.'); return; }
+  const contact=document.getElementById('f-contact').value.trim();
+  const title=document.getElementById('f-title').value.trim();
+  const recap=document.getElementById('f-recap').value.trim();
+  const lines=document.getElementById('f-commit').value.trim().split('\n').filter(Boolean);
+  const commitments=lines.map(l=>{
+    const [t,num,unit,mode]=l.split('|').map(x=>(x||'').trim());
+    return { title:t||'Commitment', committed:parseInt((num||'0').replace(/[^0-9]/g,''),10)||0, unit:unit||'', mode:(mode==='online'?'online':'offline'), said:t||'', prompt:'How did this go?' };
+  });
+  const token = slugify(org)+'-'+Math.random().toString(36).slice(2,7);
+  try{
+    await DB.addPledge({ token, org, contact, title, recap, commitments });
+    closeModal(); await load();
+    const link=`${location.origin}${location.pathname.replace(/admin\/.*/,'')}?t=${token}`;
+    navigator.clipboard.writeText(link).catch(()=>{});
+    toast('Created. Their private link is copied to your clipboard.');
+  }catch(e){ console.error(e); toast('Could not create. Check your connection and keys.'); }
+}
+function closeModal(){ document.getElementById('modal-root').innerHTML=''; }
+
+// ---- edit an existing organisation ----
+function openEdit(idx){
+  const p=DATA[idx].pledge;
+  const commitRows=p.commitments.map((c,i)=>commitEditRow(c,i)).join('');
+  document.getElementById('modal-root').innerHTML=`
+    <div class="modal-bg" onclick="if(event.target===this)closeModal()">
+      <div class="modal">
+        <div class="modal-h"><h3>Edit ${escapeHtmlAttr(p.org)}</h3><button class="x" onclick="closeModal()">×</button></div>
+        <div class="modal-b">
+          <label>Organisation name</label>
+          <input id="ed-org" value="${escapeHtmlAttr(p.org)}">
+          <label>Primary contact</label>
+          <input id="ed-contact" value="${escapeHtmlAttr(p.contact||'')}" placeholder="Name and role">
+          <label>Pledge title</label>
+          <input id="ed-title" value="${escapeHtmlAttr(p.title||'')}">
+          <label>Welcome recap <span class="small">shown on their welcome screen</span></label>
+          <textarea id="ed-recap" rows="2">${escapeHtmlText(p.recap||'')}</textarea>
+
+          <label style="margin-top:18px">Commitments</label>
+          <div class="small" style="margin-bottom:8px">Each becomes a card in their report.</div>
+          <div id="ed-commit-list">${commitRows}</div>
+          <button class="linkbtn" style="margin-top:6px" onclick="addEditCommit()">+ Add a commitment</button>
+
+          <div style="margin-top:20px;display:flex;gap:10px;justify-content:space-between;align-items:center">
+            <button class="linkbtn" onclick="copyEditLink('${p.token}',this)">Copy their link</button>
+            <div style="display:flex;gap:10px">
+              <button class="linkbtn" onclick="closeModal()">Cancel</button>
+              <button class="addbtn" onclick="saveEdit('${p.token}')">Save changes</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>`;
+}
+function commitEditRow(c,i){
+  return `<div class="ed-commit" style="border:1px solid var(--line);border-radius:10px;padding:12px;margin-bottom:10px;background:var(--paper)">
+    <div style="display:grid;grid-template-columns:1fr 90px 1fr 96px;gap:8px">
+      <div><div class="small">Title</div><input class="ec-title" value="${escapeHtmlAttr(c.title||'')}"></div>
+      <div><div class="small">Target</div><input class="ec-num" value="${c.committed||''}"></div>
+      <div><div class="small">Unit</div><input class="ec-unit" value="${escapeHtmlAttr(c.unit||'')}"></div>
+      <div><div class="small">Type</div><select class="ec-mode"><option value="offline" ${c.mode!=='online'?'selected':''}>On-ground</option><option value="online" ${c.mode==='online'?'selected':''}>Online</option></select></div>
+    </div>
+    <div style="margin-top:8px"><div class="small">What they pledged (shown to them)</div><input class="ec-said" value="${escapeHtmlAttr(c.said||'')}"></div>
+    <div style="margin-top:8px"><div class="small">Story prompt</div><input class="ec-prompt" value="${escapeHtmlAttr(c.prompt||'How did this go?')}"></div>
+    <button class="linkbtn" style="margin-top:8px" onclick="this.closest('.ed-commit').remove()">Remove this commitment</button>
+  </div>`;
+}
+function addEditCommit(){
+  const wrap=document.createElement('div');
+  wrap.innerHTML=commitEditRow({title:'',committed:'',unit:'',mode:'offline',said:'',prompt:'How did this go?'},0);
+  document.getElementById('ed-commit-list').appendChild(wrap.firstElementChild);
+}
+function collectEditCommitments(){
+  return [...document.querySelectorAll('#ed-commit-list .ed-commit')].map(d=>({
+    title:d.querySelector('.ec-title').value.trim()||'Commitment',
+    committed:parseInt((d.querySelector('.ec-num').value||'0').replace(/[^0-9]/g,''),10)||0,
+    unit:d.querySelector('.ec-unit').value.trim(),
+    mode:d.querySelector('.ec-mode').value,
+    said:d.querySelector('.ec-said').value.trim(),
+    prompt:d.querySelector('.ec-prompt').value.trim()||'How did this go?'
+  }));
+}
+async function saveEdit(token){
+  const fields={
+    org:document.getElementById('ed-org').value.trim(),
+    contact:document.getElementById('ed-contact').value.trim(),
+    title:document.getElementById('ed-title').value.trim(),
+    recap:document.getElementById('ed-recap').value.trim(),
+    commitments:collectEditCommitments()
+  };
+  if(!fields.org){ toast('Organisation name cannot be empty.'); return; }
+  try{
+    await DB.updatePledge(token, fields);
+    closeModal(); await load();
+    toast('Saved.');
+  }catch(e){ console.error(e); toast('Could not save. Check your connection.'); }
+}
+function copyEditLink(token,btn){
+  const link=`${location.origin}${location.pathname.replace(/admin\/.*/,'')}?t=${token}`;
+  navigator.clipboard.writeText(link); btn.textContent='Copied ✓'; setTimeout(()=>btn.textContent='Copy their link',1500);
+}
+function escapeHtmlAttr(s){return (s||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+function escapeHtmlText(s){return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+</script>
+</body>
+</html>

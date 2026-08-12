@@ -1,0 +1,72 @@
+// db.js — shared Supabase client + helpers
+// (collision-proof: declares no top-level shared names)
+const sb = window.sb || (window.sb = window.supabase.createClient(
+  window.AC_CONFIG.SUPABASE_URL,
+  window.AC_CONFIG.SUPABASE_ANON_KEY
+));
+
+const DB = {
+  async getPledge(token) {
+    const { data, error } = await sb.from('pledges').select('*').eq('token', token).single();
+    if (error) throw error;
+    return data;
+  },
+  async getSubmission(token) {
+    const { data } = await sb.from('submissions').select('*').eq('token', token).maybeSingle();
+    return data;
+  },
+  async openSubmission(pledge) {
+    let sub = await this.getSubmission(pledge.token);
+    if (!sub) {
+      const { data } = await sb.from('submissions')
+        .insert({ pledge_id: pledge.id, token: pledge.token, status: 'partial', opened_at: new Date().toISOString() })
+        .select().single();
+      return data;
+    }
+    if (sub.status === 'not_opened') {
+      await sb.from('submissions')
+        .update({ status: 'partial', opened_at: new Date().toISOString() })
+        .eq('token', pledge.token);
+    }
+    return sub;
+  },
+  async saveAnswers(token, answers, closing, status, extra) {
+    const patch = { answers, closing };
+    if (extra) patch.extra = extra;
+    if (status) patch.status = status;
+    if (status === 'submitted') patch.submitted_at = new Date().toISOString();
+    const { error } = await sb.from('submissions').update(patch).eq('token', token);
+    if (error) throw error;
+  },
+  async uploadEvidence(token, commitmentIndex, file) {
+    const safe = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+    const path = `${token}/c${commitmentIndex}-${Date.now()}-${safe}`;
+    const bucket = window.AC_CONFIG.EVIDENCE_BUCKET;
+    const { error } = await sb.storage.from(bucket).upload(path, file, { upsert: true });
+    if (error) throw error;
+    const { data } = sb.storage.from(bucket).getPublicUrl(path);
+    return { url: data.publicUrl, name: file.name };
+  },
+  async allForDashboard() {
+    const { data: pledges } = await sb.from('pledges').select('*').order('org');
+    const { data: subs } = await sb.from('submissions').select('*');
+    const byToken = {};
+    (subs || []).forEach(s => { byToken[s.token] = s; });
+    return (pledges || []).map(p => ({ pledge: p, sub: byToken[p.token] || null }));
+  },
+  async addPledge(row) {
+    const { data, error } = await sb.from('pledges').insert(row).select().single();
+    if (error) throw error;
+    await sb.from('submissions').insert({ pledge_id: data.id, token: data.token, status: 'not_opened' });
+    return data;
+  },
+  async updatePledge(token, fields) {
+    const { error } = await sb.from('pledges').update(fields).eq('token', token);
+    if (error) throw error;
+  },
+  async markSent(token) {
+    const { error } = await sb.from('submissions').update({ sent_at: new Date().toISOString() }).eq('token', token);
+    if (error) throw error;
+  }
+};
+window.DB = DB;
