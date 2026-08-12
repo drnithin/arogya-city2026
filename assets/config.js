@@ -4,12 +4,12 @@
 // ============================================================
 
 // 1) Your Project URL (looks like https://abcdefgh.supabase.co)
-const SUPABASE_URL = "PASTE_YOUR_PROJECT_URL_HERE";
+const SUPABASE_URL = "https://fxmvmsaoxkclratzqloo.supabase.co";
 
 // 2) Your anon / public key (a long string starting with "eyJ...")
 //    This key is SAFE to put in public code — it only allows what your
 //    RLS policies allow. Never paste the "service_role" key here.
-const SUPABASE_ANON_KEY = "PASTE_YOUR_ANON_KEY_HERE";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZ4bXZtc2FveGtjbHJhdHpxbG9vIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODY0MjUzNjksImV4cCI6MjEwMjAwMTM2OX0.5d5tEE6ZF6uTyI8H-1OpLqGcJ40rmWliLlCdLKwo9Rk";
 
 // 3) Shared password for the Arogya City technical team dashboard.
 //    Change this to something your team knows. It is a light gate,
