@@ -134,7 +134,7 @@ function buildSteps(){
   <div class="step" data-i="${N+1}"><div class="step-inner">
     <div class="eyebrow p">Your story & impact</div>
     <h1 class="big">The story behind the numbers.</h1>
-    <p class="lede">All optional, but this is what we love to celebrate publicly. Even one sentence or one photo helps us showcase your work on the Arogya City Impact Wall. Share whatever you have.</p>
+    <p class="lede">Two quick things we do need: one story of what worked, and a photo or document as proof. The rest is optional. This is what we celebrate on the Arogya City Impact Wall.</p>
 
     <div class="field" style="margin-top:24px">
       <label>Partnerships that helped</label>
@@ -143,8 +143,8 @@ function buildSteps(){
     </div>
 
     <div class="field">
-      <label>Innovations, best practices or a success story</label>
-      <div class="prompt">Any one innovation, one thing that worked really well, or one story that shows your impact. More than one is welcome too.</div>
+      <label>Innovations, best practices or a success story <span style="color:var(--rose,#c0435f)">*</span></label>
+      <div class="prompt">Share at least one: an innovation, something that worked really well, or a story that shows your impact. More than one is welcome too.</div>
       <textarea id="ex-innovations" placeholder="e.g. We built a WhatsApp reminder flow that doubled follow-up visits. One vendor told us…" oninput="onExtra()"></textarea>
     </div>
 
@@ -155,11 +155,11 @@ function buildSteps(){
     </div>
 
     <div class="field">
-      <label>Photos, videos, or supporting evidence</label>
-      <div class="prompt">Case studies, testimonials, photographs, videos, reports or media articles. Upload a file, or paste a link to a folder.</div>
+      <label>Photos, videos, or supporting evidence <span style="color:var(--rose,#c0435f)">*</span></label>
+      <div class="prompt">Please add at least one: a photo, case study, testimonial, report or media article. Upload a file, or paste a link to a folder or video.</div>
       <div class="drop" id="ex-drop" onclick="document.getElementById('ex-file').click()">
         <div class="ico"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></div>
-        <div class="t"><strong id="ex-dt">Add a photo or file (optional)</strong><span id="ex-ds">Photographs, a case study, a report, testimonials</span></div>
+        <div class="t"><strong id="ex-dt">Add a photo or file</strong><span id="ex-ds">Photographs, a case study, a report, testimonials</span></div>
         <input type="file" id="ex-file" style="display:none" onchange="onExtraFile(this)">
       </div>
       <div class="linkrow field" style="margin-top:12px">
@@ -168,7 +168,7 @@ function buildSteps(){
       </div>
     </div>
 
-    <div class="step-nav"><button class="btn btn-ghost" onclick="go(${N})">← Back</button><button class="btn btn-primary" onclick="go(${N+2})">Review &nbsp;→</button></div>
+    <div class="step-nav"><button class="btn btn-ghost" onclick="go(${N})">← Back</button><button class="btn btn-primary" onclick="nextFromStory()">Review &nbsp;→</button></div>
   </div></div>`;
 
   // REVIEW step
@@ -300,6 +300,32 @@ function onExtra(){
   EXTRA.link_url=(document.getElementById('ex-link')||{}).value||'';
   scheduleSave();
 }
+
+// the two required things: a story (text) AND some evidence (file or link)
+function storyMissing(){
+  const hasStory = (EXTRA.innovations||'').trim().length>0;
+  const hasEvidence = !!EXTRA.file_url || (EXTRA.link_url||'').trim().length>0;
+  return { hasStory, hasEvidence, ok: hasStory && hasEvidence };
+}
+function nextFromStory(){
+  const v=storyMissing();
+  if(!v.ok){
+    if(!v.hasStory){
+      const el=document.getElementById('ex-innovations');
+      el.style.borderColor='var(--rose,#c0435f)'; el.focus();
+      toast('Please share at least one innovation or success story.');
+      return;
+    }
+    if(!v.hasEvidence){
+      document.getElementById('ex-drop').style.borderColor='var(--rose,#c0435f)';
+      const el=document.getElementById('ex-link'); el.style.borderColor='var(--rose,#c0435f)';
+      document.getElementById('ex-drop').scrollIntoView({behavior:'smooth',block:'center'});
+      toast('Please add a photo or document, or paste a link.');
+      return;
+    }
+  }
+  go(N+2);
+}
 async function onExtraFile(input){
   const f=input.files[0]; if(!f) return;
   if(f.size > 25*1024*1024){ toast('That file is over 25 MB. Please paste a link instead.'); input.value=''; return; }
@@ -311,7 +337,7 @@ async function onExtraFile(input){
     document.getElementById('ex-dt').textContent=res.name;
     document.getElementById('ex-ds').textContent='Added. Tap to replace.';
     scheduleSave();
-  }catch(e){ console.error(e); toast("Upload didn't go through. Please try again."); document.getElementById('ex-dt').textContent='Add a photo or file (optional)'; }
+  }catch(e){ console.error(e); toast("Upload didn't go through. Please try again."); document.getElementById('ex-dt').textContent='Add a photo or file'; }
 }
 function toggleConsent(){
   EXTRA.consent=!EXTRA.consent;
@@ -350,6 +376,14 @@ async function submitReport(){
   // require every commitment to have a number
   const missing=st.findIndex(a=>!a.actual || a.actual<=0);
   if(missing>=0){ toast('Please fill the number reached for every commitment first.'); go(missing+1); return; }
+  // require the story + evidence
+  const v=storyMissing();
+  if(!v.ok){
+    toast(!v.hasStory ? 'Please share at least one innovation or success story.' : 'Please add a photo or document, or paste a link.');
+    go(N+1);
+    setTimeout(()=>{ if(!v.hasStory){document.getElementById('ex-innovations').style.borderColor='var(--rose,#c0435f)';} else {document.getElementById('ex-drop').style.borderColor='var(--rose,#c0435f)';document.getElementById('ex-link').style.borderColor='var(--rose,#c0435f)';} },450);
+    return;
+  }
   if(!EXTRA.consent){
     const box=document.getElementById('consent-box');
     box.style.borderColor='var(--rose,#c0435f)';
