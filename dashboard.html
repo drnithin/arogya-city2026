@@ -1,0 +1,630 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Arogya City · Technical Team</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Inter:wght@400;450;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../assets/styles.css">
+</head>
+<body>
+
+<!-- password gate -->
+<div class="gate" id="gate">
+  <div class="card">
+    <img src="../assets/logo-main.png" alt="Arogya City">
+    <h2>Technical Team</h2>
+    <p>Enter the team password to view pledge progress.</p>
+    <div class="err" id="gate-err"></div>
+    <input type="password" id="gate-pw" placeholder="Team password" onkeydown="if(event.key==='Enter')tryLogin()">
+    <button class="btn btn-purple" style="width:100%" onclick="tryLogin()">Enter</button>
+  </div>
+</div>
+
+<!-- dashboard -->
+<div class="app hidden" id="dash" style="height:100dvh">
+  <div class="admin-top">
+    <h2><img src="../assets/logo-main.png" style="height:30px"> <span class="badge">TECHNICAL TEAM</span></h2>
+    <div style="display:flex;gap:10px;align-items:center">
+      <a href="index.html" class="linkbtn" style="text-decoration:none">⌂ Home</a>
+      <a href="intake.html" class="linkbtn" style="text-decoration:none">+ Add from document</a>
+      <a href="../wall.html" class="linkbtn" style="text-decoration:none" target="_blank">Impact Wall ↗</a>
+      <button class="linkbtn" onclick="logout()">Lock</button>
+    </div>
+  </div>
+  <div class="admin-body">
+    <div class="stat-row" id="stats"></div>
+    <div class="adm-progress">
+      <div class="ah"><h3>Edition II closeout progress</h3><span id="adm-sub"></span></div>
+      <div class="adm-bar" id="admbar"></div>
+      <div class="adm-legend">
+        <span><i style="background:var(--green)"></i> Submitted</span>
+        <span><i style="background:var(--yellow)"></i> In progress</span>
+        <span><i style="background:var(--line)"></i> Not opened</span>
+      </div>
+    </div>
+    <div class="toolbar">
+      <h3>Organisations</h3>
+      <div id="chasebar"></div>
+      <div style="display:flex;gap:10px">
+        <button class="linkbtn" onclick="downloadConsolidated()">📄 Consolidated report</button>
+        <button class="linkbtn" onclick="exportAll()">⬇ Download all (Excel)</button>
+        <button class="addbtn" onclick="openAdd()">+ Add organisation</button>
+      </div>
+    </div>
+    <table>
+      <thead><tr><th>Organisation</th><th>Status</th><th>Follow-up</th><th>Reported</th><th>Last activity</th><th>Actions</th></tr></thead>
+      <tbody id="rows"></tbody>
+    </table>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+<div id="modal-root"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script src="../assets/config.js"></script>
+<script src="../assets/db.js"></script>
+<script>
+const inr=n=>(n||0).toLocaleString('en-IN');
+function toast(m){const t=document.getElementById('toast');t.textContent=m;t.classList.add('show');clearTimeout(window._t);window._t=setTimeout(()=>t.classList.remove('show'),2600);}
+let DATA=[];
+
+// --- gate ---
+function tryLogin(){
+  const pw=document.getElementById('gate-pw').value;
+  if(pw===window.AC_CONFIG.ADMIN_PASSWORD){
+    sessionStorage.setItem('ac_admin','1');
+    showDash();
+  }else{ document.getElementById('gate-err').textContent='That password did not match. Try again.'; }
+}
+function logout(){ sessionStorage.removeItem('ac_admin'); location.reload(); }
+function showDash(){
+  document.getElementById('gate').classList.add('hidden');
+  document.getElementById('dash').classList.remove('hidden');
+  load();
+}
+if(sessionStorage.getItem('ac_admin')==='1') showDash();
+
+// --- load + render ---
+async function load(){
+  try{ DATA=await DB.allForDashboard(); render(); }
+  catch(e){ console.error(e); toast('Could not load data. Check config.js keys.'); }
+}
+function statusOf(d){ return d.sub ? d.sub.status : 'not_opened'; }
+function reportedCount(d){
+  if(!d.sub || !d.sub.answers) return 0;
+  return d.sub.answers.filter(a=>a && a.actual>0).length;
+}
+function lastActivity(d){
+  if(!d.sub) return 'Link not opened';
+  if(d.sub.status==='not_opened') return 'Link not opened';
+  const t=d.sub.submitted_at||d.sub.updated_at;
+  if(!t) return '—';
+  const diff=(Date.now()-new Date(t))/1000;
+  if(diff<3600) return Math.max(1,Math.round(diff/60))+' min ago';
+  if(diff<86400) return Math.round(diff/3600)+' hr ago';
+  return Math.round(diff/86400)+' days ago';
+}
+
+function daysSince(t){ return t ? Math.floor((Date.now()-new Date(t))/86400000) : null; }
+
+// returns {level, label, needs} — needs=true means it wants chasing
+function followUp(d){
+  const s=statusOf(d);
+  if(s==='submitted') return {level:'done', label:'Done', needs:false};
+  const sub=d.sub||{};
+  const sentDays=daysSince(sub.sent_at);
+  if(sentDays===null){
+    // link not sent yet
+    return {level:'unsent', label:'Not sent yet', needs:false};
+  }
+  if(s==='not_opened'){
+    if(sentDays>=3) return {level:'red', label:`Not opened · ${sentDays}d`, needs:true};
+    return {level:'wait', label:`Sent ${sentDays}d ago`, needs:false};
+  }
+  // partial / in progress: chase if stalled since last activity
+  const stalled=daysSince(sub.updated_at);
+  if(stalled!==null && stalled>=5) return {level:'amber', label:`Stalled · ${stalled}d`, needs:true};
+  return {level:'ok', label:`Active`, needs:false};
+}
+
+let CHASE_ONLY=false;
+function toggleChase(){ CHASE_ONLY=!CHASE_ONLY; render(); }
+
+function render(){
+  const sub=DATA.filter(d=>statusOf(d)==='submitted').length;
+  const par=DATA.filter(d=>statusOf(d)==='partial').length;
+  const no=DATA.filter(d=>statusOf(d)==='not_opened').length;
+  const total=DATA.length||1;
+  const rate=Math.round(sub/total*100);
+  const chasing=DATA.filter(d=>followUp(d).needs).length;
+  document.getElementById('stats').innerHTML=`
+    <div class="stat submitted"><div class="n">${sub}</div><div class="l">Reports submitted</div></div>
+    <div class="stat partial"><div class="n">${par}</div><div class="l">In progress</div></div>
+    <div class="stat notopened"><div class="n">${no}</div><div class="l">Not yet opened</div></div>
+    <div class="stat rate"><div class="n">${rate}%</div><div class="l">Completion rate</div></div>`;
+  document.getElementById('adm-sub').textContent=`${sub} of ${DATA.length} organisations closed out`;
+  document.getElementById('admbar').innerHTML=`<div class="seg-sub" style="width:${sub/total*100}%"></div><div class="seg-par" style="width:${par/total*100}%"></div>`;
+
+  // chase filter bar
+  const chaseBar=document.getElementById('chasebar');
+  if(chaseBar){
+    chaseBar.innerHTML = chasing>0
+      ? `<button class="chasebtn ${CHASE_ONLY?'on':''}" onclick="toggleChase()">${CHASE_ONLY?'Showing '+chasing+' to chase · show all':'⚑ '+chasing+' need following up · show only these'}</button>`
+      : `<span style="font-size:13px;color:var(--green-deep)">✓ Nobody needs chasing right now</span>`;
+  }
+
+  const rows = DATA.map((d,idx)=>({d,idx,fu:followUp(d)}))
+    .filter(x=> !CHASE_ONLY || x.fu.needs);
+
+  document.getElementById('rows').innerHTML=rows.map(({d,idx,fu})=>{
+    const s=statusOf(d);
+    const n=d.pledge.commitments.length;
+    const rc=reportedCount(d);
+    const pct=Math.round(rc/(n||1)*100);
+    const pill={submitted:'Submitted',partial:'In progress',not_opened:'Not opened'}[s];
+    const link=`${location.origin}${location.pathname.replace(/admin\/.*/,'')}?t=${d.pledge.token}`;
+    const copyBtn=`<button class="linkbtn" onclick="copyAndSend('${d.pledge.token}','${link.replace(/'/g,"")}',this)">Copy link</button>`;
+    const editBtn=`<button class="viewbtn" onclick="openEdit(${idx})">Edit</button>`;
+    const viewBtn = s==='submitted' ? `<button class="viewbtn" onclick="openDetail(${idx})">View report</button>` : '';
+    const repBtn = `<button class="viewbtn" onclick="downloadOrgReport(${idx})">Report</button>`;
+    const fuTag = `<span class="fu fu-${fu.level}">${fu.label}</span>`;
+    return `<tr>
+      <td class="org-cell">${d.pledge.org}<small>${d.pledge.contact||''}</small></td>
+      <td><span class="pill ${s}">${pill}</span></td>
+      <td>${fuTag}</td>
+      <td><span class="mini-bar"><span class="mini-fill" style="width:${pct}%"></span></span>${rc}/${n}</td>
+      <td style="color:var(--ink-soft);font-size:13px">${lastActivity(d)}</td>
+      <td>${copyBtn}${editBtn}${viewBtn}${repBtn}</td></tr>`;
+  }).join('');
+  if(rows.length===0){
+    document.getElementById('rows').innerHTML=`<tr><td colspan="6" style="text-align:center;color:var(--ink-soft);padding:26px">Nothing to chase. Everyone is on track.</td></tr>`;
+  }
+}
+
+// copy link AND record that we sent it (starts the follow-up clock)
+async function copyAndSend(token, link, btn){
+  navigator.clipboard.writeText(link).then(()=>{
+    btn.classList.add('copied'); btn.textContent='Copied ✓';
+    setTimeout(()=>{btn.classList.remove('copied');btn.textContent='Copy link';},1600);
+  });
+  try{ await DB.markSent(token); await load(); }catch(e){ console.error(e); }
+}
+
+// export everything to a two-sheet Excel workbook
+function exportAll(){
+  if(typeof XLSX==='undefined'){ toast('Export library still loading, try again in a moment.'); return; }
+  // Sheet 1: summary, one row per organisation
+  const summary=DATA.map(d=>{
+    const s=statusOf(d);
+    const ex=(d.sub&&d.sub.extra)||{};
+    const totalReached=(d.sub&&d.sub.answers||[]).reduce((a,x)=>a+((x&&x.actual)||0),0);
+    return {
+      'Organisation':d.pledge.org,
+      'Contact':d.pledge.contact||'',
+      'Pledge title':d.pledge.title||'',
+      'Status':{submitted:'Submitted',partial:'In progress',not_opened:'Not opened'}[s],
+      'Commitments':d.pledge.commitments.length,
+      'Total reached (sum)':totalReached,
+      'Partnerships':ex.partnerships||'',
+      'Innovations / success story':ex.innovations||'',
+      'Did more than pledged':ex.more_than_pledged||'',
+      'Closing note':(d.sub&&d.sub.closing)||'',
+      'Consent to public use':ex.consent?'Yes':'No',
+      'Evidence file':ex.file_url||'',
+      'Evidence link':ex.link_url||'',
+      'Submitted on':(d.sub&&d.sub.submitted_at)?new Date(d.sub.submitted_at).toLocaleDateString('en-IN'):''
+    };
+  });
+  // Sheet 2: detail, one row per commitment
+  const detail=[];
+  DATA.forEach(d=>{
+    d.pledge.commitments.forEach((c,i)=>{
+      const a=(d.sub&&d.sub.answers&&d.sub.answers[i])||{};
+      detail.push({
+        'Organisation':d.pledge.org,
+        'Commitment':c.title,
+        'Type':c.mode==='online'?'Online':'On-ground',
+        'Target':c.committed,
+        'Unit':c.unit,
+        'Reached':a.actual||0,
+        '% of target':c.committed?Math.round((a.actual||0)/c.committed*100)+'%':'',
+        'Their story':a.story||'',
+        'Evidence file':a.file_url||'',
+        'Evidence link':a.link_url||''
+      });
+    });
+  });
+  const wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(summary), 'Summary');
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(detail), 'By commitment');
+  const today=new Date().toISOString().slice(0,10);
+  XLSX.writeFile(wb, `Arogya-City-EditionII-reports-${today}.xlsx`);
+  toast('Downloaded. Two sheets: Summary and By commitment.');
+}
+
+// ============================================================
+//  BRANDED REPORTS  — printable / save-as-PDF
+//  Opens a clean report window; the user saves it as PDF from
+//  the print dialog (works offline, no library, keeps the logos).
+// ============================================================
+function reportBase(){ return location.origin + location.pathname.replace(/admin\/.*/,''); }
+function esc(s){ return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function nl2br(s){ return esc(s).replace(/\n/g,'<br>'); }
+
+function reportStyles(){
+  const base=reportBase();
+  return `
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Inter:wght@400;450;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap');
+    :root{--ink:#1a2b22;--soft:#5c6b63;--green:#1f7a4d;--green-deep:#0f5233;--purple:#7F2E8B;--orange:#F5A64B;--line:#e7e3d8;--paper:#f7f6f1}
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{font-family:'Inter',system-ui,sans-serif;color:var(--ink);line-height:1.5;background:#fff}
+    .sheet{max-width:820px;margin:0 auto;padding:40px 46px 60px}
+    .rhead{display:flex;align-items:center;justify-content:space-between;border-bottom:2px solid var(--green);padding-bottom:18px;margin-bottom:8px}
+    .rhead .l{height:46px} .rhead .r{height:30px}
+    .rhead .prog{display:flex;align-items:center;gap:9px}
+    .rhead .prog span{font-size:10.5px;color:var(--soft);font-family:'IBM Plex Mono',monospace}
+    .eyebrow{font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--orange);margin-top:26px}
+    h1{font-family:'Fraunces',serif;font-weight:600;font-size:30px;letter-spacing:-.02em;line-height:1.1;margin:6px 0 4px}
+    .sub{color:var(--soft);font-size:14px;margin-bottom:4px}
+    .meta{font-size:12.5px;color:var(--soft);font-family:'IBM Plex Mono',monospace;margin-top:10px}
+    .pledgebox{background:var(--paper);border:1px solid var(--line);border-left:3px solid var(--orange);border-radius:10px;padding:16px 18px;margin:20px 0}
+    .pledgebox .k{font-family:'IBM Plex Mono',monospace;font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--orange);margin-bottom:6px}
+    .pledgebox p{font-size:14.5px}
+    .pledgebox .hl{background:#fde6c9;padding:0 3px;border-radius:3px}
+    h2{font-family:'Fraunces',serif;font-weight:600;font-size:18px;margin:26px 0 12px;color:var(--green-deep)}
+    .cmt{border:1px solid var(--line);border-radius:10px;padding:14px 16px;margin-bottom:12px;break-inside:avoid}
+    .cmt .ct{font-weight:600;font-size:15px}
+    .cmt .mode{display:inline-block;font-size:10.5px;font-family:'IBM Plex Mono',monospace;color:var(--soft);margin-left:6px}
+    .nums{display:flex;gap:20px;align-items:baseline;margin-top:8px}
+    .nums .big{font-family:'Fraunces',serif;font-size:24px;font-weight:600;color:var(--green-deep)}
+    .nums .goal{font-size:13px;color:var(--soft)}
+    .nums .pc{margin-left:auto;font-family:'IBM Plex Mono',monospace;font-size:12.5px;font-weight:600;padding:3px 9px;border-radius:20px;background:#e6f3ec;color:var(--green-deep)}
+    .bar{height:7px;border-radius:5px;background:var(--line);margin-top:10px;overflow:hidden}
+    .bar i{display:block;height:100%;background:linear-gradient(90deg,var(--green),var(--orange));border-radius:5px}
+    .story p{font-size:14px;margin-bottom:4px}
+    .story .q{font-family:'IBM Plex Mono',monospace;font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--purple);margin:14px 0 3px}
+    .ev{font-size:12.5px;color:var(--soft);word-break:break-all}
+    .rfoot{margin-top:40px;padding-top:20px;border-top:1px solid var(--line);text-align:center}
+    .rfoot .cap{font-size:10.5px;font-family:'IBM Plex Mono',monospace;letter-spacing:.06em;text-transform:uppercase;color:var(--soft);margin-bottom:10px}
+    .rfoot img{height:40px}
+    .consol-row{display:flex;justify-content:space-between;align-items:baseline;padding:11px 0;border-bottom:1px solid var(--line);font-size:13.5px;break-inside:avoid}
+    .consol-row .nm{font-weight:600}
+    .consol-row .st{font-size:11px;font-family:'IBM Plex Mono',monospace;color:var(--soft)}
+    .consol-row .vv{font-family:'IBM Plex Mono',monospace;color:var(--green-deep);font-weight:600}
+    .totbar{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin:22px 0}
+    .totbar .t{border:1px solid var(--line);border-radius:10px;padding:16px 18px}
+    .totbar .t .n{font-family:'Fraunces',serif;font-size:26px;font-weight:600;color:var(--green-deep)}
+    .totbar .t .l{font-size:12px;color:var(--soft);margin-top:4px}
+    @media print{.sheet{max-width:none;padding:0 10px}.noprint{display:none}.pagebreak{page-break-before:always}}
+    .printbar{position:fixed;top:0;left:0;right:0;background:var(--green-deep);color:#fff;padding:10px 20px;display:flex;justify-content:space-between;align-items:center;z-index:99}
+    .printbar button{font-family:inherit;font-size:13px;font-weight:600;background:#fff;color:var(--green-deep);border:none;border-radius:8px;padding:8px 18px;cursor:pointer}
+    .printbar span{font-size:13px}
+    .padtop{padding-top:52px}
+  </style>`;
+}
+function reportHead(){
+  const base=reportBase();
+  return `<div class="rhead">
+    <img class="l" src="${base}assets/logo-main.png" alt="Arogya City">
+    <div class="prog"><span>a program of</span><img class="r" src="${base}assets/logo-arogya-world.png" alt="Arogya World"></div>
+  </div>`;
+}
+function reportFoot(){
+  const base=reportBase();
+  return `<div class="rfoot"><div class="cap">An initiative for a healthy Bengaluru by</div><img src="${base}assets/logo-partners.png" alt="Arogya City partners"></div>`;
+}
+function openReportWindow(title, inner){
+  const w=window.open('','_blank');
+  if(!w){ toast('Please allow pop-ups to download the report.'); return; }
+  w.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>${esc(title)}</title>${reportStyles()}</head>
+    <body>
+      <div class="printbar noprint"><span>Your report is ready. Use "Save as PDF" in the print dialog.</span><button onclick="window.print()">Download / Print ↓</button></div>
+      <div class="sheet padtop">${inner}</div>
+    </body></html>`);
+  w.document.close();
+}
+
+// one organisation's report
+function orgReportHTML(d){
+  const s=statusOf(d);
+  const statusLabel={submitted:'Report submitted',partial:'In progress',not_opened:'Not opened'}[s];
+  const total=(d.sub&&d.sub.answers||[]).reduce((a,x)=>a+((x&&x.actual)||0),0);
+  const cmts=d.pledge.commitments.map((c,i)=>{
+    const a=(d.sub&&d.sub.answers&&d.sub.answers[i])||{};
+    const pct=c.committed?Math.round((a.actual||0)/c.committed*100):0;
+    const ev=[];
+    if(a.file_url) ev.push(`<div class="ev">Evidence: ${esc(a.file_name||a.file_url)}</div>`);
+    if(a.link_url) ev.push(`<div class="ev">Link: ${esc(a.link_url)}</div>`);
+    return `<div class="cmt">
+      <div class="ct">${esc(c.title)}<span class="mode">${c.mode==='online'?'Online':'On-ground'}</span></div>
+      <div class="nums"><span class="big">${inr(a.actual||0)}</span><span class="goal">reached of ${inr(c.committed)} ${esc(c.unit)} pledged</span><span class="pc">${pct}%</span></div>
+      <div class="bar"><i style="width:${Math.min(pct,100)}%"></i></div>
+      ${a.story?`<p style="font-size:13.5px;margin-top:10px">${nl2br(a.story)}</p>`:''}
+      ${ev.join('')}
+    </div>`;
+  }).join('');
+  const ex=(d.sub&&d.sub.extra)||{};
+  let story='';
+  const blk=(t,l)=> t?`<div class="q">${l}</div><p>${nl2br(t)}</p>`:'';
+  story+=blk(ex.innovations,'Innovations & success story');
+  story+=blk(ex.partnerships,'Partnerships');
+  story+=blk(ex.more_than_pledged,'Did more than pledged');
+  if(d.sub&&d.sub.closing) story+=blk(d.sub.closing,'Anything else they told us');
+  const evExtra=[];
+  if(ex.file_url) evExtra.push(`<div class="ev">Evidence file: ${esc(ex.file_name||ex.file_url)}</div>`);
+  if(ex.link_url) evExtra.push(`<div class="ev">Evidence link: ${esc(ex.link_url)}</div>`);
+  return `
+    ${reportHead()}
+    <div class="eyebrow">Arogya City Bengaluru · Edition II · Final report</div>
+    <h1>${esc(d.pledge.org)}</h1>
+    <div class="sub">${esc(d.pledge.title||'')}</div>
+    <div class="meta">${d.pledge.contact?('Contact: '+esc(d.pledge.contact)+'  ·  '):''}Period 2024–2026  ·  ${statusLabel}${d.sub&&d.sub.submitted_at?('  ·  Submitted '+new Date(d.sub.submitted_at).toLocaleDateString('en-IN')):''}</div>
+    ${d.pledge.recap?`<div class="pledgebox"><div class="k">Their 2024 pledge</div><p>${d.pledge.recap}</p></div>`:''}
+    <h2>What they delivered</h2>
+    ${cmts}
+    ${(story||evExtra.length)?`<h2>Story & impact</h2><div class="story">${story}${evExtra.join('')}</div>`:''}
+    ${reportFoot()}`;
+}
+function downloadOrgReport(idx){
+  const d=DATA[idx];
+  openReportWindow(`${d.pledge.org} — Arogya City report`, orgReportHTML(d));
+}
+
+// consolidated report across all orgs
+function downloadConsolidated(){
+  const subbed=DATA.filter(d=>statusOf(d)==='submitted');
+  const totalReached=DATA.reduce((a,d)=>a+((d.sub&&d.sub.answers||[]).reduce((x,y)=>x+((y&&y.actual)||0),0)),0);
+  const totalCommit=DATA.reduce((a,d)=>a+d.pledge.commitments.length,0);
+  const rows=DATA.map(d=>{
+    const s=statusOf(d);
+    const t=(d.sub&&d.sub.answers||[]).reduce((x,y)=>x+((y&&y.actual)||0),0);
+    const label={submitted:'Submitted',partial:'In progress',not_opened:'Not opened'}[s];
+    return `<div class="consol-row"><div><span class="nm">${esc(d.pledge.org)}</span> <span class="st">· ${label}</span></div><div class="vv">${inr(t)} reached</div></div>`;
+  }).join('');
+  // one page per org (detailed), after the summary
+  const perOrg=subbed.map(d=>`<div class="pagebreak"></div>${orgReportHTML(d)}`).join('');
+  const today=new Date().toLocaleDateString('en-IN');
+  const inner=`
+    ${reportHead()}
+    <div class="eyebrow">Arogya City Bengaluru · Edition II</div>
+    <h1>Consolidated impact report</h1>
+    <div class="sub">All pledge makers · generated ${today}</div>
+    <div class="totbar">
+      <div class="t"><div class="n">${subbed.length}/${DATA.length}</div><div class="l">organisations reported</div></div>
+      <div class="t"><div class="n">${inr(totalReached)}</div><div class="l">people reached (sum)</div></div>
+      <div class="t"><div class="n">${totalCommit}</div><div class="l">commitments pledged</div></div>
+    </div>
+    <h2>All organisations</h2>
+    ${rows}
+    ${reportFoot()}
+    ${perOrg}`;
+  openReportWindow('Arogya City — Consolidated report', inner);
+}
+
+function copyLink(link,btn){
+  navigator.clipboard.writeText(link).then(()=>{
+    btn.classList.add('copied'); btn.textContent='Copied ✓';
+    setTimeout(()=>{btn.classList.remove('copied');btn.textContent='Copy link';},1600);
+  });
+}
+
+// --- detail view ---
+function openDetail(idx){
+  const d=DATA[idx];
+  const rows=d.pledge.commitments.map((c,i)=>{
+    const a=(d.sub.answers&&d.sub.answers[i])||{};
+    const file=a.file_url?`<a href="#" onclick="downloadNamed('${a.file_url}','${escStr(d.pledge.org)}',${i+1},'c${i+1}');return false">📎 Download photo (${escStr(d.pledge.org)}-${i+1})</a>`:'';
+    const link=a.link_url?`<a href="${a.link_url}" target="_blank">🔗 ${a.link_url}</a>`:'';
+    return `<div class="detail-c">
+      <div class="dt">${c.title}</div>
+      <div class="dm">Goal ${inr(c.committed)} ${c.unit}</div>
+      <div class="dv">${inr(a.actual||0)} <span style="font-size:12px;color:var(--ink-soft);font-family:'IBM Plex Mono',monospace">reached</span></div>
+      ${a.story?`<p style="font-size:13.5px;margin-top:8px">${a.story}</p>`:''}
+      <div style="margin-top:8px;display:flex;flex-direction:column;gap:4px">${file}${link}</div>
+    </div>`;
+  }).join('');
+  const closing=d.sub.closing?`<label style="display:block;font-weight:600;font-size:13px;margin:14px 0 6px">Anything else they told us</label><p style="font-size:14px;color:var(--ink-soft)">${escStr(d.sub.closing)}</p>`:'';
+  const ex=d.sub.extra||{};
+  const exBlock=(txt,label)=> txt?`<label style="display:block;font-weight:600;font-size:13px;margin:14px 0 4px">${label}</label><p style="font-size:14px;color:var(--ink-soft)">${escStr(txt)}</p>`:'';
+  let story='';
+  story+=exBlock(ex.partnerships,'Partnerships');
+  story+=exBlock(ex.innovations,'Innovations & success stories');
+  story+=exBlock(ex.more_than_pledged,'Did more than pledged');
+  if(ex.file_url) story+=`<div style="margin-top:10px"><a href="#" onclick="downloadNamed('${ex.file_url}','${escStr(d.pledge.org)}',null,'story');return false">📎 Download evidence (${escStr(d.pledge.org)}-story)</a></div>`;
+  if(ex.link_url) story+=`<div style="margin-top:6px"><a href="${ex.link_url}" target="_blank">🔗 ${ex.link_url}</a></div>`;
+  const consent = ex.consent ? `<div style="margin-top:14px;font-size:12.5px;color:var(--green-deep)">✓ Consented to public use of photos & materials</div>`
+    : `<div style="margin-top:14px;font-size:12.5px;color:var(--ink-soft)">Consent for public use: not given</div>`;
+  const storyWrap = (story||consent) ? `<div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--line)"><div style="font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--purple);margin-bottom:4px">Story & impact</div>${story}${consent}</div>` : '';
+  document.getElementById('modal-root').innerHTML=`
+    <div class="modal-bg" onclick="if(event.target===this)closeModal()">
+      <div class="modal">
+        <div class="modal-h"><h3>${d.pledge.org} · final report</h3><button class="x" onclick="closeModal()">×</button></div>
+        <div style="display:flex;gap:10px;padding:0 0 4px;flex-wrap:wrap">
+          <button class="linkbtn" onclick="downloadOrgReport(${idx})">📄 Download report (PDF)</button>
+          <button class="linkbtn" onclick="downloadOrgPhotos(${idx})">⬇ Download photos</button>
+        </div>
+        <div class="modal-b">${rows}${closing}${storyWrap}</div>
+      </div>
+    </div>`;
+}
+function escStr(s){return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+
+// download a file renamed by organisation, e.g. Biocon-1.jpg
+function slugOrg(org){ return (org||'org').replace(/[^a-zA-Z0-9]+/g,'-').replace(/^-|-$/g,''); }
+function extOf(url,fallback){
+  const m=(url||'').split('?')[0].match(/\.([a-zA-Z0-9]{1,5})$/);
+  return m?('.'+m[1].toLowerCase()):(fallback||'');
+}
+async function downloadNamed(url, orgName, n, label){
+  const ext=extOf(url,'');
+  const base=slugOrg(orgName)+(label?('-'+label):'')+(n?('-'+n):'')+ext;
+  try{
+    const res=await fetch(url);
+    if(!res.ok) throw new Error('fetch failed');
+    const blob=await res.blob();
+    const a=document.createElement('a');
+    a.href=URL.createObjectURL(blob);
+    a.download=base;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(()=>URL.revokeObjectURL(a.href),4000);
+  }catch(e){
+    // fallback: open in a new tab if the file can't be fetched (CORS)
+    console.error(e);
+    toast('Opening the file in a new tab (could not auto-rename).');
+    window.open(url,'_blank');
+  }
+}
+// download every photo/file an org uploaded, each named by the org
+async function downloadOrgPhotos(idx){
+  const d=DATA[idx]; const org=d.pledge.org;
+  const files=[];
+  (d.sub&&d.sub.answers||[]).forEach((a,i)=>{ if(a&&a.file_url) files.push({url:a.file_url, label:'c'+(i+1)}); });
+  const ex=(d.sub&&d.sub.extra)||{};
+  if(ex.file_url) files.push({url:ex.file_url, label:'story'});
+  if(!files.length){ toast('No uploaded files for this organisation.'); return; }
+  toast('Downloading '+files.length+' file'+(files.length>1?'s':'')+'…');
+  let n=1;
+  for(const f of files){ await downloadNamed(f.url, org, n++, f.label); await new Promise(r=>setTimeout(r,350)); }
+}
+
+// --- add organisation ---
+function openAdd(){
+  document.getElementById('modal-root').innerHTML=`
+    <div class="modal-bg" onclick="if(event.target===this)closeModal()">
+      <div class="modal">
+        <div class="modal-h"><h3>Add an organisation</h3><button class="x" onclick="closeModal()">×</button></div>
+        <div class="modal-b">
+          <label>Organisation name</label>
+          <input id="f-org" placeholder="e.g. Narayana Health">
+          <label>Primary contact</label>
+          <input id="f-contact" placeholder="e.g. Ms. Priya, CSR Lead">
+          <label>Pledge title</label>
+          <input id="f-title" placeholder="Short name of their pledge">
+          <label>Recap sentence <span class="small">(shown on their welcome screen, in your friendly voice)</span></label>
+          <textarea id="f-recap" rows="2" placeholder="You set out to…"></textarea>
+          <label>Commitments <span class="small">one per line, format: Title | goal number | unit | mode(online/offline)</span></label>
+          <textarea id="f-commit" rows="4" placeholder="Train restaurant owners | 100 | owners trained | offline
+Reach people online | 50000 | people engaged | online"></textarea>
+          <div style="margin-top:18px;display:flex;gap:10px;justify-content:flex-end">
+            <button class="linkbtn" onclick="closeModal()">Cancel</button>
+            <button class="addbtn" onclick="saveNewOrg()">Create + get link</button>
+          </div>
+        </div>
+      </div>
+    </div>`;
+}
+function slugify(s){ return s.toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'').slice(0,40); }
+async function saveNewOrg(){
+  const org=document.getElementById('f-org').value.trim();
+  if(!org){ toast('Please enter the organisation name.'); return; }
+  const contact=document.getElementById('f-contact').value.trim();
+  const title=document.getElementById('f-title').value.trim();
+  const recap=document.getElementById('f-recap').value.trim();
+  const lines=document.getElementById('f-commit').value.trim().split('\n').filter(Boolean);
+  const commitments=lines.map(l=>{
+    const [t,num,unit,mode]=l.split('|').map(x=>(x||'').trim());
+    return { title:t||'Commitment', committed:parseInt((num||'0').replace(/[^0-9]/g,''),10)||0, unit:unit||'', mode:(mode==='online'?'online':'offline'), said:t||'', prompt:'How did this go?' };
+  });
+  const token = slugify(org)+'-'+Math.random().toString(36).slice(2,7);
+  try{
+    await DB.addPledge({ token, org, contact, title, recap, commitments });
+    closeModal(); await load();
+    const link=`${location.origin}${location.pathname.replace(/admin\/.*/,'')}?t=${token}`;
+    navigator.clipboard.writeText(link).catch(()=>{});
+    toast('Created. Their private link is copied to your clipboard.');
+  }catch(e){ console.error(e); toast('Could not create. Check your connection and keys.'); }
+}
+function closeModal(){ document.getElementById('modal-root').innerHTML=''; }
+
+// ---- edit an existing organisation ----
+function openEdit(idx){
+  const p=DATA[idx].pledge;
+  const commitRows=p.commitments.map((c,i)=>commitEditRow(c,i)).join('');
+  document.getElementById('modal-root').innerHTML=`
+    <div class="modal-bg" onclick="if(event.target===this)closeModal()">
+      <div class="modal">
+        <div class="modal-h"><h3>Edit ${escapeHtmlAttr(p.org)}</h3><button class="x" onclick="closeModal()">×</button></div>
+        <div class="modal-b">
+          <label>Organisation name</label>
+          <input id="ed-org" value="${escapeHtmlAttr(p.org)}">
+          <label>Primary contact</label>
+          <input id="ed-contact" value="${escapeHtmlAttr(p.contact||'')}" placeholder="Name and role">
+          <label>Pledge title</label>
+          <input id="ed-title" value="${escapeHtmlAttr(p.title||'')}">
+          <label>Welcome recap <span class="small">shown on their welcome screen</span></label>
+          <textarea id="ed-recap" rows="2">${escapeHtmlText(p.recap||'')}</textarea>
+
+          <label style="margin-top:18px">Commitments</label>
+          <div class="small" style="margin-bottom:8px">Each becomes a card in their report.</div>
+          <div id="ed-commit-list">${commitRows}</div>
+          <button class="linkbtn" style="margin-top:6px" onclick="addEditCommit()">+ Add a commitment</button>
+
+          <div style="margin-top:20px;display:flex;gap:10px;justify-content:space-between;align-items:center">
+            <button class="linkbtn" onclick="copyEditLink('${p.token}',this)">Copy their link</button>
+            <div style="display:flex;gap:10px">
+              <button class="linkbtn" onclick="closeModal()">Cancel</button>
+              <button class="addbtn" onclick="saveEdit('${p.token}')">Save changes</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>`;
+}
+function commitEditRow(c,i){
+  return `<div class="ed-commit" style="border:1px solid var(--line);border-radius:10px;padding:12px;margin-bottom:10px;background:var(--paper)">
+    <div style="display:grid;grid-template-columns:1fr 90px 1fr 96px;gap:8px">
+      <div><div class="small">Title</div><input class="ec-title" value="${escapeHtmlAttr(c.title||'')}"></div>
+      <div><div class="small">Target</div><input class="ec-num" value="${c.committed||''}"></div>
+      <div><div class="small">Unit</div><input class="ec-unit" value="${escapeHtmlAttr(c.unit||'')}"></div>
+      <div><div class="small">Type</div><select class="ec-mode"><option value="offline" ${c.mode!=='online'?'selected':''}>On-ground</option><option value="online" ${c.mode==='online'?'selected':''}>Online</option></select></div>
+    </div>
+    <div style="margin-top:8px"><div class="small">What they pledged (shown to them)</div><input class="ec-said" value="${escapeHtmlAttr(c.said||'')}"></div>
+    <div style="margin-top:8px"><div class="small">Story prompt</div><input class="ec-prompt" value="${escapeHtmlAttr(c.prompt||'How did this go?')}"></div>
+    <button class="linkbtn" style="margin-top:8px" onclick="this.closest('.ed-commit').remove()">Remove this commitment</button>
+  </div>`;
+}
+function addEditCommit(){
+  const wrap=document.createElement('div');
+  wrap.innerHTML=commitEditRow({title:'',committed:'',unit:'',mode:'offline',said:'',prompt:'How did this go?'},0);
+  document.getElementById('ed-commit-list').appendChild(wrap.firstElementChild);
+}
+function collectEditCommitments(){
+  return [...document.querySelectorAll('#ed-commit-list .ed-commit')].map(d=>({
+    title:d.querySelector('.ec-title').value.trim()||'Commitment',
+    committed:parseInt((d.querySelector('.ec-num').value||'0').replace(/[^0-9]/g,''),10)||0,
+    unit:d.querySelector('.ec-unit').value.trim(),
+    mode:d.querySelector('.ec-mode').value,
+    said:d.querySelector('.ec-said').value.trim(),
+    prompt:d.querySelector('.ec-prompt').value.trim()||'How did this go?'
+  }));
+}
+async function saveEdit(token){
+  const fields={
+    org:document.getElementById('ed-org').value.trim(),
+    contact:document.getElementById('ed-contact').value.trim(),
+    title:document.getElementById('ed-title').value.trim(),
+    recap:document.getElementById('ed-recap').value.trim(),
+    commitments:collectEditCommitments()
+  };
+  if(!fields.org){ toast('Organisation name cannot be empty.'); return; }
+  try{
+    await DB.updatePledge(token, fields);
+    closeModal(); await load();
+    toast('Saved.');
+  }catch(e){ console.error(e); toast('Could not save. Check your connection.'); }
+}
+function copyEditLink(token,btn){
+  const link=`${location.origin}${location.pathname.replace(/admin\/.*/,'')}?t=${token}`;
+  navigator.clipboard.writeText(link); btn.textContent='Copied ✓'; setTimeout(()=>btn.textContent='Copy their link',1500);
+}
+function escapeHtmlAttr(s){return (s||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+function escapeHtmlText(s){return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+</script>
+</body>
+</html>
